@@ -883,27 +883,26 @@ double potentialByObject(vector<double*> object, double get_x, double get_y) {
         double x_v = object[i][2];
         double y_v = object[i][3];
         double r = object[i][4];
-        z += (100 - 10 * i) * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
+        z += (100 - 10 * i) * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
+//        cout << "objects " << i << " " << get_x << " " << get_y << " " << x << " " << y << " " << r << endl;
     }
-    return 1000 * z;
+    return z;
 }
 
 
 double potentialByLane(vector<pair<double, double>> L, vector<pair<double, double>> R, double get_x, double get_y) {
     double z = 0;
-    for (auto & i : L) {
-        double x = i.first;
-        double y = i.second;
-        z += 50 * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-    }
 
-    for (auto & i : R) {
-        double x = i.first;
-        double y = i.second;
-        z += 50 * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-    }
+    int i = get_y;
+    double x = L[i].first;
+    double y = L[i].second;
+    z += 255 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
 
-    return 1000 * z;
+    x = R[i].first;
+    y = R[i].second;
+    z += 255 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
+
+    return z;
 }
 
 
@@ -941,25 +940,39 @@ pair<double, double> diffByLane(vector<pair<double, double>> L, vector<pair<doub
 
 void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<double, double>> L, vector<pair<double, double>> R) {
 //    Mat dstImage(900, 600, CV_8UC3, Scalar(255, 255, 255));
+
+    Mat frame_show = dstImage.clone();
+    int width = dstImage.cols;
+    int height = dstImage.rows;
+    resize(dstImage, frame_show, Size(width/4, height/4));
+
+    cout << "generating value map..." << endl;
+
     double map[900][600];
     double big = -1;
-    for (int i = 0; i < 900; i++) {
-        for (int j = 0; j < 600; j++) {
+    for (int i = 0; i < 900; i+=4) {
+        for (int j = 0; j < 600; j+=4) {
             map[i][j] = potentialByObject(object, j, i);
-            map[i][j] += potentialByLane(L, R, j, i);
+//            map[i][j] += potentialByLane(L, R, j, i);
             if (map[i][j] > big) {
                 big = map[i][j];
             }
         }
     }
-    for (int i = 0; i < 900; i+=20) {
-        for (int j = 0; j < 600; j+=20) {
-            map[i][j] /= big; // 최대 크기 1로 nomalization
-            map[i][j] *= 255; // 최대 크기 255로
-            circle(dstImage, Point(j, i), 10, Scalar(255 - map[i][j], 255 - map[i][j], 255 - map[i][j]), -1);
+
+    cout << "visualization..." << endl;
+
+    for (int i = 0; i < 900; i+=4) {
+        for (int j = 0; j < 600; j+=4) {
+//            map[i][j] /= big; // 최대 크기 1로 nomalization
+//            map[i][j] *= 255; // 최대 크기 255로
+            circle(frame_show, Point(j/4, i/4), 1, Scalar(255 - map[i][j], 255 - map[i][j], 255 - map[i][j]), -1);
         }
     }
-    imshow("dd", dstImage);
+
+    cout << "visualization finished" << endl;
+
+    imshow("dd", frame_show);
     waitKey(0);
 }
 
@@ -984,20 +997,21 @@ void getMovingFrame(Mat &frame, int time) {
     cout << "generating objects..." << endl;
 
     vector<pair<double, double>> obj_move;
-//    obj_move.push_back(make_pair(50, 100));
-//    obj_move.push_back(make_pair(100, 200));
-//    obj_move.push_back(make_pair(150, 300));
-//    obj_move.push_back(make_pair(200, 350));
-//    obj_move.push_back(make_pair(250, 400));
+    obj_move.push_back(make_pair(50, 100));
+    obj_move.push_back(make_pair(100, 200));
+    obj_move.push_back(make_pair(150, 300));
+    obj_move.push_back(make_pair(200, 350));
+    obj_move.push_back(make_pair(250, 400));
     obj_move.push_back(make_pair(300, 430));
     obj_move.push_back(make_pair(350, 460));
     obj_move.push_back(make_pair(400, 490));
-//    obj_move.push_back(make_pair(450, 520));
-//    obj_move.push_back(make_pair(500, 600));
-//    obj_move.push_back(make_pair(550, 650));
-//    obj_move.push_back(make_pair(600, 700));
+    obj_move.push_back(make_pair(450, 520));
+    obj_move.push_back(make_pair(500, 600));
+    obj_move.push_back(make_pair(550, 650));
+    obj_move.push_back(make_pair(600, 700));
 
-    vector<double*> obj_info = get_obj_info(obj_move, 100);
+    vector<double*> obj_info = get_obj_info(obj_move, 50);
+
 
     cout << "generating objects finished" << endl;
     cout << "generating lanes..." << endl;
@@ -1013,7 +1027,7 @@ void getMovingFrame(Mat &frame, int time) {
     cout << "generating lanes finished" << endl;
     cout << "generating potential field..." << endl;
 
-    show_potentialField(dstImage, obj_info, points_lane_left, points_lane_right);
+    show_potentialField(dstImage, obj_info, L, R);
 
     cout << "generating potential field finished" << endl;
 
