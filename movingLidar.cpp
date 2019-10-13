@@ -923,57 +923,60 @@ pair<double, double> diffByObject(vector<double*> object, int now_frame, double 
 
 pair<double, double> diffByLane(vector<pair<double, double>> L, vector<pair<double, double>> R, double get_x, double get_y) {
     int i = get_y;
-    double x = L[i].first;
-    double y = L[i].second;
+    double x1 = L[i].first;
+    double y1 = L[i].second;
 
-    double diff_x = -0.5 * (get_x - x) * log10(exp(1)) * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-    double diff_y = -0.5 * (get_y - y) * log10(exp(1)) * exp(-0.005 * (pow(get_y - y, 2) + pow(get_x - x, 2)));
+    double diff_x = 1 * (get_x - x1) * log10(exp(1)) * exp(-0.00005 * (pow(get_x - x1, 2) + pow(get_y - y1, 2)));
+//    double diff_y = -0.000005 * (get_y - y1) * log10(exp(1)) * exp(-0.5 * (pow(get_y - y1, 2) + pow(get_x - x1, 2)));
+    double diff_y = 0;
 
-    x = R[i].first;
-    y = R[i].second;
-    diff_x += -0.5 * (get_x - x) * log10(exp(1)) * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-    diff_y += -0.5 * (get_y - y) * log10(exp(1)) * exp(-0.005 * (pow(get_y - y, 2) + pow(get_x - x, 2)));
+    double x2 = R[i].first;
+    double y2 = R[i].second;
+    diff_x += 1 * (get_x - x2) * log10(exp(1)) * exp(-0.00005 * (pow(get_x - x2, 2) + pow(get_y - y2, 2)));
+//    diff_y += -0.000005 * (get_y - y2) * log10(exp(1)) * exp(-0.5 * (pow(get_y - y2, 2) + pow(get_x - x2, 2)));
     return make_pair(diff_x, diff_y);
 }
 
 
 
 void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<double, double>> L, vector<pair<double, double>> R) {
-//    Mat dstImage(900, 600, CV_8UC3, Scalar(255, 255, 255));
 
-    Mat frame_show = dstImage.clone();
-    int width = dstImage.cols;
-    int height = dstImage.rows;
-    resize(dstImage, frame_show, Size(width/4, height/4));
+    int width = 600;
+    int height = 900;
+    Mat frame_show(height, width, CV_8UC3, Scalar(255, 255, 255));
 
-    cout << "generating value map..." << endl;
-
-    double map[900][600];
-    double big = -1;
-    for (int i = 0; i < 900; i+=4) {
-        for (int j = 0; j < 600; j+=4) {
-            map[i][j] = potentialByObject(object, j, i);
-//            map[i][j] += potentialByLane(L, R, j, i);
-            if (map[i][j] > big) {
-                big = map[i][j];
-            }
-        }
-    }
+    int showing_gap = 3;
 
     cout << "visualization..." << endl;
 
-    for (int i = 0; i < 900; i+=4) {
-        for (int j = 0; j < 600; j+=4) {
-//            map[i][j] /= big; // 최대 크기 1로 nomalization
-//            map[i][j] *= 255; // 최대 크기 255로
-            circle(frame_show, Point(j/4, i/4), 1, Scalar(255 - map[i][j], 255 - map[i][j], 255 - map[i][j]), -1);
+    double cost = 0;
+    for (int i = 0; i < height; i += showing_gap) {
+        for (int j = 0; j < width; j += showing_gap) {
+//            cost = potentialByObject(object, j, i);
+            cost = potentialByLane(L, R, j, i);
+            circle(frame_show, Point(j, i), showing_gap, Scalar(255 - cost, 255 - cost, 255 - cost), -1);
         }
     }
 
+    cout << "visualizing vectors..." << endl;
+
+    pair<double, double> diff_lane, diff_object;
+    for (int i = 0; i < height; i += showing_gap * 10) {
+        for (int j = 0; j < width; j += showing_gap * 10) {
+//            diff_object = diffByObject(object, 0, j, i);
+            diff_lane = diffByLane(L, R, j, i);
+            arrowedLine(frame_show, Point2d(j, i), Point2d(j + diff_lane.first, i + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
+//            arrowedLine(frame_show, Point2d(j, i), Point2d(diff_object.first + diff_lane.first, diff_object.second + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
+        }
+    }
+
+
     cout << "visualization finished" << endl;
 
-    imshow("dd", frame_show);
+    imshow("Visualization", frame_show);
     waitKey(0);
+
+    dstImage = frame_show;
 }
 
 
