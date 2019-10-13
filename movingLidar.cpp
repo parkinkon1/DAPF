@@ -449,47 +449,6 @@ void costTracker(Mat &input, Mat &output, vector<Vec2i> &route, vector<float> &a
 
     float temp_x = 1000000, temp_y = 10000000;
 
-//    // 사방 픽셀에 대하여 높은 코스트 탐색
-//    for (int x = pre_x + direction_x - gridSize; x <= pre_x + direction_x + gridSize; x++) {
-//        // 예외조건 처리
-//        if (x < 0 || x > width) continue;
-//
-//            for (int y = pre_y + direction_y - gridSize; y <= pre_y + direction_y + gridSize; y++) {
-//                // 예외조건 처리
-//                if ((y <= 0) || (y >= height)) continue;
-////                // 방향벡터간 거리가 멀 경우 탐색하지 않음 (방향성 부여)
-////                if ((x - pre_x - direction_x)*(x - pre_x - direction_x) + (y - pre_y - direction_y)*(y - pre_y - direction_y) >= minGap*minGap) continue;
-//
-//                // 높은 점수 픽셀 검사
-//                cost = static_cast<int>(frame.at<uchar>(y, x));
-//                if (cost >= max_cost) {
-//                    max_cost = cost;
-//                    if (pow(temp_x - (float)x, 2) + pow(temp_y - (float)y, 2) >= pow(now_x - (float)x, 2) + pow(now_y - (float)y, 2)) {
-//                        now_x = x;
-//                        now_y = y;
-//                    }
-////                    now_x = x;
-////                    now_y = y;
-//                    temp_x = x;
-//                    temp_y = y;
-//                    if (max_cost == 255) break;
-//                }
-//            }
-//    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     double slope = -1, angle = -1;
     if (!route.empty()) {
@@ -595,6 +554,162 @@ void costTracker(Mat &input, Mat &output, vector<Vec2i> &route, vector<float> &a
     else costTracker(input, output, route, angles, now_x, now_y, now_x - pre_x, now_y - pre_y, frame_show);
 
 }
+
+
+
+
+// path planning : 충돌 여부 감지를 위해 이진 영상 dangerous 필요
+void costTracker(Mat &dangerous, vector<Vec2i> &route, Point2d pre_point, Point2d pre_direction, Mat &frame_show) {
+
+//    int width = dangerous.cols;
+//    int height = dangerous.rows;
+//
+//    Point2d startPoint(3*width/4, height);
+//    Point2d now_point = pre_point;
+//    Point2d now_direction(0, 0);
+//
+//    pair<double, double> diff_lane = make_pair(0,0), diff_object = make_pair(0,0);
+//    diff_lane = diffByLane();
+//    diff_object = diffByObject();
+//
+//    now_direction.x = diff_lane.first + diff_object.first;
+//    now_direction.y = diff_lane.second + diff_object.second;
+//    now_point
+//
+//
+//
+//
+//
+//    int gridSize = 5;
+//    int direction_length = 5;
+//    int minGap = 5;
+//
+//    int max_cost = -1, cost = -1;
+//
+//    float direction_norm = sqrt(powf((float)direction_x, 2) + powf((float)direction_y, 2));
+//    direction_x = (int)((float)direction_length * (float)direction_x / direction_norm);
+//    direction_y = (int)((float)direction_length * (float)direction_y / direction_norm);
+//
+//    float temp_x = 1000000, temp_y = 10000000;
+//
+//
+//    pair<double, double> diff_lane = make_pair(0, 0), diff_object = make_pair(0, 0);
+//    diff_lane = diffByLane()
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//    double slope = -1, angle = -1;
+//    if (!route.empty()) {
+//        slope = (double)(now_x - route.back()[0]) / (double)(route.back()[1] - now_y);
+//        angles.push_back(atan(slope));
+//    }
+//
+//    route.push_back(Vec2i(now_x, now_y));
+//
+//
+//
+//    if ((pre_x == now_x && pre_y == now_y) || max_cost <= 10) {
+//        cout << "route size : " << route.size() << endl;
+//
+//        if (!route.empty()) {
+//            slope = (double)(route[(int)(2)][0] - route[0][0]) / (double)(route[0][1] - route[(int)(2)][1]);
+//            angle = atan(slope) * 180 / CV_PI;
+//
+//            cout << "angle : " << angle << endl;
+//
+//            cvtColor(frame, frame, COLOR_GRAY2BGR);
+//            for (int i = 0; i < (int)route.size() - 1; i++) {
+////                line(frame, route[i], route[i+1], Scalar(0, 0, 255), 2);
+//            }
+//            for (int i = 0; i < (int)route.size() - 1; i++) {
+//                circle(frame, route[i], 5, Scalar(50, 100, 150), -1);
+//            }
+//
+//            vector<double> ans;
+//            curveFitting(frame, frame, route, ans);
+//
+//            imageshow("curve fitting", frame);
+//
+//
+//            vector<Vec2i> route_car;
+//            vector<double> next_pos;
+//            double steer = 0, pre_steer = 0, heading = -CV_PI/2, steer_temp;
+//            double x1 = 0, x2 = 0;
+//
+//            int count = 0, isColl = 0;
+//
+//
+//
+//            route_car.push_back(Vec2i(startPoint.x, startPoint.y));
+//
+//            while (true) {
+//                pre_steer = steer;
+//                steer = getSteerwithCurve(ans, route_car.back()[1]);
+//                cout << "str : " << steer << endl;
+//                heading = (-CV_PI / 2) + pre_steer;
+//
+//                steer_temp = (steer - pre_steer);
+//                cout << "dd : " << steer_temp << endl;
+//                if (steer_temp > 0.3491) steer_temp = 0.3491;
+//                else if (steer_temp < -0.3491) steer_temp = -0.3491;
+//
+//                next_pos = PredictCar(steer_temp, 1.0,0.01, heading);
+//                cout << "before: next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
+//                cout << "route_car : " << route_car.back() << endl;
+//                next_pos[0] += route_car.back()[0];
+//                next_pos[1] += route_car.back()[1];
+//                cout << "after : next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
+//                if (next_pos[0] < 0 || next_pos[0] > width || next_pos[1] < 0 || next_pos[1] > height) break;
+//                route_car.push_back(Vec2i(next_pos[0],next_pos[1]));
+//                next_pos.clear();
+//
+//                if (count % 10 == 0) {
+//                    isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, potential);
+//                }
+//                count++;
+//
+//                // 충돌 상황을 만나면 종료
+//                if (isColl) {
+//                    cout << "collide !!" << endl;
+//                    break;
+//                }
+//
+//            }
+//            for (int i = 0; i < (int)route_car.size() - 1; i++) {
+//                line(frame_show, route_car[i], route_car[i+1], Scalar(255, 0, 255), 2);
+//            }
+//            for (int i = 0; i < (int)route_car.size(); i++) {
+//                circle(frame_show, route_car[i], 3, Scalar(150, 150, 200), -1);
+//            }
+//
+//            waitKey();
+//            imshow("path planning", frame);
+//            imshow("simulation", frame_show);
+//
+//
+//            output = frame;
+//
+//            return;
+//
+//        }
+//        else {
+//            cout << "Lane not detected ㅜㅜ" << endl;
+//        }
+//
+//
+//        return;
+//    }
+//    else costTracker(input, output, route, angles, now_x, now_y, now_x - pre_x, now_y - pre_y, frame_show);
+
+}
+
 
 
 
@@ -877,14 +992,25 @@ vector<double*> get_obj_info(vector<pair<double, double>> obj_move, double r) {
 
 double potentialByObject(vector<double*> object, double get_x, double get_y) {
     double z = 0;
-    for (int i = 0; i < (int)object.size(); i++) {
+    for (int i = 0; i < object.size(); i++) {
         double x = object[i][0];
         double y = object[i][1];
         double x_v = object[i][2];
         double y_v = object[i][3];
         double r = object[i][4];
-        z += (100 - 10 * i) * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-//        cout << "objects " << i << " " << get_x << " " << get_y << " " << x << " " << y << " " << r << endl;
+
+        // z += (100 - 10 * i) * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
+        double distance = pow(pow(get_x - x, 2) + pow(get_y - y, 2), (1 / 2)); // get_x, get_y 가 object하고 가까우면 값이 더해져야지
+        if (distance != 0) {
+            z += -1 / distance;
+        }
+        else{
+            z += 255;
+        }
+
+    }
+    if (z > 100) {
+        return 100;
     }
     return z;
 }
@@ -914,8 +1040,8 @@ pair<double, double> diffByObject(vector<double*> object, int now_frame, double 
     double x_v = object[i][2];
     double y_v = object[i][3];
     double r = object[i][4];
-    double diff_x = (get_x - x) * (-1 * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2))));
-    double diff_y = (get_y - y) * (-1 * exp(-0.005 * (pow(get_y - y, 2) + pow(get_x - x, 2))));
+    double diff_x = (get_x - x) * (1 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2))));
+    double diff_y = (get_y - y) * (1 * exp(-0.00005 * (pow(get_y - y, 2) + pow(get_x - x, 2))));
     return make_pair(diff_x, diff_y);
 }
 
@@ -952,21 +1078,20 @@ void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<doub
     double cost = 0;
     for (int i = 0; i < height; i += showing_gap) {
         for (int j = 0; j < width; j += showing_gap) {
-//            cost = potentialByObject(object, j, i);
-            cost = potentialByLane(L, R, j, i);
+            cost += potentialByObject(object, j, i);
+//            cost = potentialByLane(L, R, j, i);
             circle(frame_show, Point(j, i), showing_gap, Scalar(255 - cost, 255 - cost, 255 - cost), -1);
         }
     }
 
     cout << "visualizing vectors..." << endl;
 
-    pair<double, double> diff_lane, diff_object;
+    pair<double, double> diff_lane = make_pair(0, 0), diff_object = make_pair(0, 0);
     for (int i = 0; i < height; i += showing_gap * 10) {
         for (int j = 0; j < width; j += showing_gap * 10) {
-//            diff_object = diffByObject(object, 0, j, i);
-            diff_lane = diffByLane(L, R, j, i);
-            arrowedLine(frame_show, Point2d(j, i), Point2d(j + diff_lane.first, i + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
-//            arrowedLine(frame_show, Point2d(j, i), Point2d(diff_object.first + diff_lane.first, diff_object.second + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
+            diff_object = diffByObject(object, 0, j, i);
+//            diff_lane = diffByLane(L, R, j, i);
+            arrowedLine(frame_show, Point2d(j, i), Point2d(j + diff_object.first + diff_lane.first, i + diff_object.second + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
         }
     }
 
@@ -1134,13 +1259,13 @@ void getMovingFrame(Mat &frame, int time) {
     cout << "generating objects..." << endl;
 
     vector<pair<double, double>> obj_move;
-//    obj_move.push_back(make_pair(50, 100));
-//    obj_move.push_back(make_pair(100, 200));
-//    obj_move.push_back(make_pair(150, 300));
-//    obj_move.push_back(make_pair(200, 350));
-//    obj_move.push_back(make_pair(250, 400));
-//    obj_move.push_back(make_pair(300, 430));
-//    obj_move.push_back(make_pair(350, 460));
+    obj_move.push_back(make_pair(50, 100));
+    obj_move.push_back(make_pair(100, 200));
+    obj_move.push_back(make_pair(150, 300));
+    obj_move.push_back(make_pair(200, 350));
+    obj_move.push_back(make_pair(250, 400));
+    obj_move.push_back(make_pair(300, 430));
+    obj_move.push_back(make_pair(350, 460));
     obj_move.push_back(make_pair(400, 490));
     obj_move.push_back(make_pair(450, 520));
     obj_move.push_back(make_pair(500, 600));
@@ -1207,6 +1332,16 @@ void simulation(Mat &input, Mat &output) {
 
 
 
+
+
+
+
+
+
+
+
+
+    /// TTC 계산
     //차의 현재위치와 물체의 현재위치
     pair<double, double> car = make_pair(10,10);  // make_pair(5, 5);
     pair<double, double> object = make_pair(20,20);
