@@ -49,7 +49,6 @@ double getSteerwithCurve(vector<double> &ans, int y);
 
 void detection(Mat &input, Mat &output);
 
-Mat imgWarping(vector<float> pointSet, Mat &imgPotential);
 bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &potential);
 
 
@@ -62,7 +61,17 @@ pair<double, double> diffByObject(vector<double*> object, int now_frame, double 
 pair<double, double> diffByLane(vector<pair<double, double>> L, vector<pair<double, double>> R, double get_x, double get_y);
 void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<double, double>> L, vector<pair<double, double>> R);
 
+
+void DynamicPotential( vector< vector<double> > &ObjCombine , vector < vector<double> >&object);
+
+
 void getMovingFrame(Mat &frame, int time);
+
+
+
+double distance(pair<double, double> car, pair<double, double > object);
+double inner_product(pair<double, double> v_rel, pair<double, double> d_rel);
+double TTC_master(pair<double, double> car, pair<double, double > object, pair<double, double> car_heading, pair<double, double> object_heading, double car_velocity, double object_velocity);
 
 
 

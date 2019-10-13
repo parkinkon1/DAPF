@@ -977,6 +977,140 @@ void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<doub
 }
 
 
+
+
+
+void DynamicPotential( vector< vector<double> > &ObjCombine , vector < vector<double> >&object) {
+
+    vector<double> ObjParticle;
+
+    double z1 = 0, z2 = 0, z3 = 0;
+    double diff_x_1, diff_x_2, diff_x_3;
+    double diff_y_1, diff_y_2, diff_y_3;
+    double pt1_x, pt1_y, pt2_x, pt2_y;
+
+    for (int i = 0; i < object.size(); i++) {
+        double x = object[i][0];
+        double y = object[i][1];
+        double x_v = object[i][2];
+        double y_v = object[i][3];
+        double r = object[i][4];
+
+        pt1_x = x + x_v / 2;
+        pt1_y = y + y_v / 2;
+        pt2_x = x + x_v;
+        pt2_y = y + y_v;
+
+        for (int q = 0; q < 900; q++)
+        {
+            for (int p = 0; p < 600; p++)
+            {
+                z1 = 100 * exp(-( 0.005 / r )*(pow(q - x, 2) + pow(p - y, 2)));
+                z2 = 150 * exp(-(0.005 / (5 * r))*(pow(q - pt1_x, 2) + pow(p - pt1_y, 2)));
+                z3 = 200 * exp(-(0.005 / (10 * r))*(pow(q - pt2_x, 2) + pow(p - pt2_y, 2)));
+
+                diff_x_1 = (q - x) * (-1 * exp(-(0.005 / r ) * (pow(q - x, 2) + pow(p - y, 2))));
+                diff_y_1 = (p - y) * (-1 * exp(-(0.005 / r ) * (pow(p - y, 2) + pow(q - x, 2))));
+
+                diff_x_2 = (q - pt1_x) * (-1 * exp(-(0.005 / (5 * r)) * (pow(q - pt1_x, 2) + pow(p - pt1_y, 2))));
+                diff_y_2 = (p - pt1_y) * (-1 * exp(-(0.005 / (5 * r)) * (pow(p - pt1_y, 2) + pow(q - pt1_x, 2))));
+
+                diff_x_3 = (q - pt2_x) * (-1 * exp(-(0.005 / (10 * r)) * (pow(q - pt2_x, 2) + pow(p - pt2_y, 2))));
+                diff_y_3 = (p - pt2_y) * (-1 * exp(-(0.005 / (10 * r)) * (pow(p - pt2_y, 2) + pow(q - pt2_x, 2))));
+
+                double z_sum = z1 + z2 + z3;
+                double diff_x_sum = diff_x_1 + diff_x_2 + diff_x_3;
+                double diff_y_sum = diff_y_1 + diff_y_2 + diff_y_3;
+
+                ObjParticle.push_back(q);
+                ObjParticle.push_back(p);
+                ObjParticle.push_back(diff_x_sum);
+                ObjParticle.push_back(diff_y_sum);
+                ObjParticle.push_back(z_sum);
+
+                ObjCombine.push_back(ObjParticle);
+
+            }
+        }
+    }
+}
+
+void DynamicPotential() {
+
+    vector< vector<double> > ObjCombine;
+    vector<double> ObjParticle;
+
+    for (int i = 0; i < 3; i++) {
+
+        double z1, z2, z3, z4, z5;
+        double diff_x_1, diff_x_2, diff_x_3, diff_x_4, diff_x_5;
+        double diff_y_1, diff_y_2, diff_y_3, diff_y_4, diff_y_5;
+        double pt1_x, pt1_y, pt2_x, pt2_y, pt3_x, pt3_y, pt4_x, pt4_y;
+
+
+        double x = 400; // (x,y) : 오브젝트의 위치
+        double y = 300;
+        double x_v = -100; // (x_v, y_v) : 오브젝트의 방향 벡터
+        double y_v = 100;
+        double r = 100; // 오브젝트의 반경 --> 현재 반경과 함수식 계수의 비례관계가 성립되지 않음
+
+        double q ;   // (q,p) 에 퍼텐셜 및 방향퍼텐셜을 알고 싶은 좌표를 입력하면 됨.
+        double p ;
+
+        pt1_x = x + (x_v / 4); // 물체의 예측 경로상에 퍼텐셜을 5단계로 나누어 계산한다.
+        pt1_y = y + (y_v / 4);
+        pt2_x = x + (x_v / 3);
+        pt2_y = y + (y_v / 3);
+        pt3_x = x + (x_v / 2);
+        pt3_y = y + (y_v / 2);
+        pt4_x = x + x_v;
+        pt4_y = y + y_v;
+
+        z1 = 100 * exp(-(0.005 / r)*(pow(q - x, 2) + pow(p - y, 2)));
+        z2 = 110 * exp(-(0.005 / (1.1 * r))*(pow(q - pt1_x, 2) + pow(p - pt1_y, 2)));
+        z3 = 120 * exp(-(0.005 / (1.2 * r))*(pow(q - pt2_x, 2) + pow(p - pt2_y, 2)));
+        z4 = 130 * exp(-(0.005 / (1.3 * r))*(pow(q - pt3_x, 2) + pow(p - pt3_y, 2)));
+        z5 = 140 * exp(-(0.005 / (1.4 * r))*(pow(q - pt4_x, 2) + pow(p - pt4_y, 2)));
+
+
+        diff_x_1 = (q - x) * (-1 * exp(-(0.005 / r) * (pow(q - x, 2) + pow(p - y, 2))));
+        diff_y_1 = (p - y) * (-1 * exp(-(0.005 / r) * (pow(p - y, 2) + pow(q - x, 2))));
+
+        diff_x_2 = 1.1*(q - pt1_x) * (-1 * exp(-(0.005 / (1.1 * r)) * (pow(q - pt1_x, 2) + pow(p - pt1_y, 2))));
+        diff_y_2 = 1.1*(p - pt1_y) * (-1 * exp(-(0.005 / (1.1 * r)) * (pow(p - pt1_y, 2) + pow(q - pt1_x, 2))));
+
+        diff_x_3 = 1.2*(q - pt2_x) * (-1 * exp(-(0.005 / (1.2 * r)) * (pow(q - pt2_x, 2) + pow(p - pt2_y, 2))));
+        diff_y_3 = 1.2*(p - pt2_y) * (-1 * exp(-(0.005 / (1.2 * r)) * (pow(p - pt2_y, 2) + pow(q - pt2_x, 2))));
+
+        diff_x_4 = 1.3*(q - pt3_x) * (-1 * exp(-(0.005 / (1.3 * r)) * (pow(q - pt3_x, 2) + pow(p - pt3_y, 2))));
+        diff_y_4 = 1.3*(p - pt3_y) * (-1 * exp(-(0.005 / (1.3 * r)) * (pow(p - pt3_y, 2) + pow(q - pt3_x, 2))));
+
+        diff_x_5 = 1.4*(q - pt4_x) * (-1 * exp(-(0.005 / (1.4 * r)) * (pow(q - pt4_x, 2) + pow(p - pt4_y, 2))));
+        diff_y_5 = 1.4*(p - pt4_y) * (-1 * exp(-(0.005 / (1.4 * r)) * (pow(p - pt4_y, 2) + pow(q - pt4_x, 2))));
+
+
+        double z_sum = z1 + z2 + z3 + z4 + z5;
+        double diff_x_sum = diff_x_1 + diff_x_2 + diff_x_3 + diff_x_4 + diff_x_5;
+        double diff_y_sum = diff_y_1 + diff_y_2 + diff_y_3 + diff_y_4 + diff_y_5;
+
+        cout << "Zs : " << z1 << " " << z2 << " " << z3 << " " << z4 << " " << z5 << endl;
+        cout << "diff_xs : " << diff_x_1 << " " << diff_x_2 << " " << diff_x_3 << " " << diff_x_4 << " " << diff_x_5 << endl;
+        cout << "diff_ys : " << diff_y_1 << " " << diff_y_2 << " " << diff_y_3 << " " << diff_y_4 << " " << diff_y_5 << endl;
+
+        ObjParticle.push_back(q);
+        ObjParticle.push_back(p);
+        ObjParticle.push_back(diff_x_sum);
+        ObjParticle.push_back(diff_y_sum);
+        ObjParticle.push_back(z_sum);
+
+        ObjCombine.push_back(ObjParticle);
+
+    }
+}
+
+
+
+
 ///------------------------------------------------
 
 
@@ -997,13 +1131,13 @@ void getMovingFrame(Mat &frame, int time) {
     cout << "generating objects..." << endl;
 
     vector<pair<double, double>> obj_move;
-    obj_move.push_back(make_pair(50, 100));
-    obj_move.push_back(make_pair(100, 200));
-    obj_move.push_back(make_pair(150, 300));
-    obj_move.push_back(make_pair(200, 350));
-    obj_move.push_back(make_pair(250, 400));
-    obj_move.push_back(make_pair(300, 430));
-    obj_move.push_back(make_pair(350, 460));
+//    obj_move.push_back(make_pair(50, 100));
+//    obj_move.push_back(make_pair(100, 200));
+//    obj_move.push_back(make_pair(150, 300));
+//    obj_move.push_back(make_pair(200, 350));
+//    obj_move.push_back(make_pair(250, 400));
+//    obj_move.push_back(make_pair(300, 430));
+//    obj_move.push_back(make_pair(350, 460));
     obj_move.push_back(make_pair(400, 490));
     obj_move.push_back(make_pair(450, 520));
     obj_move.push_back(make_pair(500, 600));
@@ -1066,11 +1200,55 @@ void simulation(Mat &input, Mat &output) {
     imshow("costmap", frame);
 
     output = frame;
+
+
+
+
+    //차의 현재위치와 물체의 현재위치
+    pair<double, double> car = make_pair(10,10);  // make_pair(5, 5);
+    pair<double, double> object = make_pair(20,20);
+    pair<double, double> car_heading = make_pair(1,5);
+    pair<double, double> object_heading = make_pair(10,1);
+    double car_velocity = 5;
+    double object_velocity = 3;
+
+    double answer = TTC_master(car, object, car_heading, object_heading, car_velocity, object_velocity);
+    cout << answer << endl;
+
+
 }
 
 
 
 
+///----------------------------------
+//차량과 물체의 거리 차이 |d| 를 알려주는 함수 -> 분자
+double distance(pair<double, double> car, pair<double, double > object) {
+    double x_distance = car.first > object.first ? car.first - object.first : object.first - car.first;
+    double y_distance = car.second > object.second ? car.second - object.second : object.second - car.second;
+    double total_distance = sqrt(x_distance * x_distance + y_distance * y_distance);
+    return total_distance * total_distance;
+}
+
+//v벡터와 d벡터를 외적해주는 함수 -> 분모
+double inner_product(pair<double, double> v_rel, pair<double, double> d_rel) {
+    double inner = v_rel.first * d_rel.first + v_rel.second * d_rel.second;
+    return inner;
+}
+
+double TTC_master(pair<double, double> car, pair<double, double > object, pair<double, double> car_heading, pair<double, double> object_heading, double car_velocity, double object_velocity) {
+    double v_rel_x = (object_heading.first - car_heading.first) * car_velocity;
+    double v_rel_y = (object_heading.second - car_heading.second) * car_velocity;
+    pair<double, double> v_rel = make_pair(v_rel_x, v_rel_y);
+    pair<double, double> d_rel = make_pair(object.first - car.first, object.second - object.second);
+
+    //numerator은 분자, denominator은 분모
+    double numerator = distance(car, object);
+    double denominator = inner_product(v_rel, d_rel);
+
+    double TTC = numerator / denominator;
+    return TTC;
+}
 
 
 
