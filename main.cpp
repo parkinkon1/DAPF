@@ -19,7 +19,7 @@ int main() {
 
     getMovingFrame(input, 3);
 
-    detection(input, input);
+//    detection(input, input);
     waitKey();
 
 

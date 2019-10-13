@@ -91,6 +91,9 @@
 		<Unit filename="/Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h">
 			<Option target="movingLidar"/>
 		</Unit>
+		<Unit filename="/Users/parkkyuyeol/CLionProjects/movingLidar/preProcessing.h">
+			<Option target="movingLidar"/>
+		</Unit>
 		<Unit filename="/Users/parkkyuyeol/CLionProjects/movingLidar/CMakeLists.txt">
 			<Option virtualFolder="CMake Files\"/>
 		</Unit>

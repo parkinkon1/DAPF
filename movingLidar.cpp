@@ -4,320 +4,6 @@
 
 #include "movingLidar.h"
 
-/////////////////////////////////////////////////////////////
-//////////////////// Pre-Processing /////////////////////////
-/////////////////////////////////////////////////////////////
-
-// 이미지를 보여주는 함수
-void imageshow(const string& name, Mat &original) {
-    Mat image_show;
-    int key;
-//    resize(original, image_show, Size(480, 270));
-    imshow(name, original);
-    key = waitKey(1);
-    if (key == 27) destroyAllWindows();
-}
-
-
-// 컬러 이미지에 대해 Adaptive 영상 이진화
-void binarization(Mat &input, Mat &output){
-    int blocksize = (int)(input.rows/5) + ((int)(input.rows/5) % 2) + 1;
-    cvtColor(input, output, COLOR_BGR2GRAY);
-    medianBlur(output, output, 5);
-    adaptiveThreshold(output, output, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, blocksize, 10);
-//    erode(output, output, getStructuringElement(MORPH_ELLIPSE, Size(3, 5)));
-//    dilate(output, output, getStructuringElement(MORPH_ELLIPSE, Size(3, 5)));
-}
-
-
-// 연속된 점들을 선으로 이어 드로잉
-void drawLines(Mat &input, Mat &output, const vector<Vec2i>& line_points) {
-    cvtColor(input, output, COLOR_GRAY2BGR);
-    for (int i = 0; i < (int)line_points.size() - 1; i++) {
-        line(output, line_points[i], line_points[i+1], Scalar(0, 0, 255), 4);
-    }
-}
-
-
-// 관심 영역 추출
-void ROIcut(Mat &input, Mat &output) {
-    // 입력 영상의 가로, 세로 길이
-    int width = input.cols;
-    int height = input.rows;
-    cv::Rect myROI(0, (int)((float)height*0.6), width, (int)((float)height*0.4)); // (x,y,w,h)
-    // ROI 영역으로 자르기
-    output = input(myROI);
-}
-
-
-// top view 변환
-void topView(Mat &input, Mat &output) {
-    int width = input.cols;
-    int height = input.rows;
-    // warping 비율
-    float width_ratio_top = 0.35; // 이미지 상단에서 자를 부분의 비율
-    float width_ratio_bot = 1.8; // 이미지 하단에서 자를 부분의 비율
-    float height_ratio = 1.4; // 밑변과 높이 간의 비율
-    // warping 크기와 warping할 프레임 정의
-    Size warpSize(width, (int)((float)width*height_ratio));
-    Mat warpframe(warpSize, input.type());
-
-    // Warping 전의 이미지 상의 좌표
-    vector<Point2f> corners(4);
-    corners[0] = Point2f((float)width*(0.5 - width_ratio_top/2), 0); // left top
-    corners[1] = Point2f((float)width*(0.5 + width_ratio_top/2), 0); // right top
-    corners[2] = Point2f((float)width*(0.5 - width_ratio_bot/2), height); // left bot
-    corners[3] = Point2f((float)width*(0.5 + width_ratio_bot/2), height); // right bot
-    // Warping 후의 좌표
-    vector<Point2f> warpCorners(4);
-    warpCorners[0] = Point2f(0, 0);
-    warpCorners[1] = Point2f(warpframe.cols, 0);
-    warpCorners[2] = Point2f(0, warpframe.rows);
-    warpCorners[3] = Point2f(warpframe.cols, warpframe.rows);
-
-    // Transformation Matrix 구하기
-    Mat trans = getPerspectiveTransform(corners, warpCorners);
-    // Warping
-    warpPerspective(input, warpframe, trans, warpSize);
-    output = warpframe;
-}
-
-
-/////////////////////////////////////////////////////////////
-//////////////////// Lane Detection /////////////////////////
-/////////////////////////////////////////////////////////////
-
-// 영상에서 선분을 추출하여 시작점과 끝점을 lines에 저장
-void findLines(Mat &image, vector<Vec4i> &lines, double gap) {
-    // Hough Transform 파라미터
-    float rho = 1; // distance resolution in pixels of the Hough grid
-    float theta = 1 * CV_PI / 180; // angular resolution in radians of the Hough grid
-    int hough_threshold = (int)gap/2;    // minimum number of votes(intersections in Hough grid cell)
-    double minLineLength = gap/2; //minimum number of pixels making up a line
-    double maxLineGap = gap;   //maximum gap in pixels between connectable line segments
-    // 직선 검출 (Hough Transform)
-    HoughLinesP(image, lines, rho, theta, hough_threshold, minLineLength, maxLineGap);
-}
-
-
-// 주어진 영상에서 gap에 대해 sliding window 방식으로 곡선 차선 검출
-void searchLane(const Mat& frame, vector<Vec2i> &line_points, int pivot_x, int pivot_y, int gap) {
-    // 검출된 직선들을 저장할 벡터
-    vector<Vec4i> lines;
-    int width = frame.cols;
-    int height = frame.rows;
-    // 검색할 상위 영역 프레임 추출
-    int x_gap = width/8; // 위로 슬라이딩하여 검색할 영역의 좌우 크기
-    int x_min = (pivot_x - x_gap < 0) ? 0 : pivot_x - x_gap;
-    int x_max = (pivot_x + x_gap > width) ?  width : pivot_x + x_gap;
-    int y_min = pivot_y - gap;
-    int y_max = pivot_y;
-
-    int x_offset = 3, y_offset = 3;
-
-    // 프레임 끝까지 탐색되면 종료
-    if (y_min < 0) return;
-    // 검색할 프레임 자르기
-    Mat search_frame = frame(Range(y_min, y_max), Range(x_min, x_max));
-    // 추출한 프레임에 대해 선분 검색
-    findLines(search_frame, lines, gap);
-
-    // 선분 검출이 되면, 해당 선분의 상단점을 차선 위 점으로 추가
-    int x1, y1, x2, y2, x_temp, y_temp;
-    if (!lines.empty()) {
-        // 인식된 점들 중 피벗과 이어진 점 추출
-        for (auto & line : lines) {
-            // 검출된 선분의 시작점과 끝점 좌표
-            x1 = line[0], y1 = line[1], x2 = line[2], y2 = line[3];
-            // 점 두 개의 순서가 바뀌었으면 서로 교환
-            if (y1 < y2) {
-                x_temp = x2; y_temp = y2;
-                x2 = x1; y2 = y1;
-                x1 = x_temp; y1 = y_temp;
-            }
-            // 피벗과 가까운 선 추출
-            if (abs(pivot_x - (x_min + x1)) <= x_offset && abs(pivot_y - (y_min + y1)) <= y_offset) {
-                line_points.push_back(Point2i(x_min + x1, y_min + y1));
-                line_points.push_back(Point2i(x_min + x2, y_min + y2));
-                searchLane(frame, line_points, x_min + x2, y_min, gap);
-                break;
-            }
-        } return; // 피벗과 이어진 선분이 없으면 종료
-    } else return; // 검출된 선분이 없으면 종료
-}
-
-
-// 왼쪽, 오른쪽 차선 검출
-void searchLanes(Mat &input, Mat &output, vector<Vec2i> &line_points_left, vector<Vec2i> &line_points_right) {
-    // 인풋 이미지 크기
-    int input_width = input.cols;
-    int input_height = input.rows;
-    // 이미지 처리를 위한 리사이징 크기
-    int width = input_width/4;
-    int height = input_height/4;
-    // 이미지 리사이징
-    Mat frame;
-    resize(input, frame, Size(width, height));
-
-    // 곡선 차선 검출해서 line_points 에 저장
-    int slide_num = 6; // 최대 슬라이딩 횟수
-    int gap = (int)((float)height/(float)slide_num); // 각 슬라이드의 높이
-    int min_length = (int)((double)height/2);
-    vector<Vec2i> dotted_line; // 직선 위 점들을 저장할 벡터
-    vector<Vec4i> lines;
-    vector< vector<Vec2i> > linePoints;
-    Mat pivot_frame;
-    int x1, y1, x2, y2, x_temp, y_temp, dotted_pivot_x, dotted_pivot_y, line_length;
-    // 최대 영상 중앙까지 피벗이 될 차선의 시작점을 검출하고, 위로 차선을 검색하여 가장 긴 차선 검출
-    // 피벗 차선 검출이 안될 경우 반복
-    //// ------------- 왼쪽 차선 ------------------
-    for (int slide = 0; slide < (int)(slide_num / 2); slide++) {
-        // 초기화
-        line_points_left.clear(); dotted_line.clear();
-        // 해당 줄의 피벗 영상 추출
-        pivot_frame = frame(Range(height - gap - gap*slide, height - gap*slide), Range(0, (int)((float)width*0.5)));
-        // 피벗 영상에 대해 차선의 시작점 검출
-        findLines(pivot_frame, lines, gap);
-        if (lines.empty()) continue; // 검출 안되면 위로 슬라이딩하여 다시 검출
-        //// 각 시작점에 대해 차선 검출, 일정 길이 이상의 차선을 검출할 때까지 반복
-        for (auto &line : lines) {
-            // 검출된 선분의 시작점, 끝점
-            x1 = line[0]; y1 = line[1]; x2 = line[2]; y2 = line[3];
-            // 점 순서가 바뀌었을 경우 조정
-            if (y1 < y2) { x_temp = x2; y_temp = y2; x2 = x1; y2 = y1; x1 = x_temp; y1 = y_temp; }
-            // 시작점과 끝점을 벡터에 삽입
-            line_points_left.push_back(Point2i(x1, height - gap + y1 - gap*slide));
-            line_points_left.push_back(Point2i(x2, height - gap + y2 - gap*slide));
-            // 위 방향으로 차선 검출
-            searchLane(frame, line_points_left, x2, height - gap + y2 - gap*slide, gap);
-            if (line_points_left.size() == 2) continue; // 검출 안되면 다른 시작점에 대해 다시 실행
-            // 검출된 선의 길이
-            line_length = line_points_left[0][1] - line_points_left.back()[1];
-
-            //// 충분히 긴 직선이 검출되면 해당 선을 추종 차선으로 선택, 검색 종료
-            if (line_length >= min_length) break;
-                //// 실패한 경우 dotted_line 길이 업데이트, 다른 시작점에 대해 검사
-            else {
-                // dotted_line이 비어있을 경우 추가
-                if (dotted_line.empty()) {
-                    dotted_line.insert( dotted_line.end(), line_points_left.begin(), line_points_left.end() );
-                }
-                    // dotted_line이 비어있지 않을 경우 더 긴 차선으로 업데이트
-                else {
-                    if (line_length > (dotted_line[0][1] - line_points_left.back()[1])) {
-                        dotted_line.clear();
-                        dotted_line.insert( dotted_line.end(), line_points_left.begin(), line_points_left.end() );
-                    }
-                }
-                // 다른 시작점에 대해 검사
-                line_points_left.clear();
-                continue;
-            }
-        }
-
-        //// 실선 차선을 발견한 경우 검사 종료
-        if (!line_points_left.empty()) {
-
-            break;
-        }
-            //// 실선 차선 발견 못한 경우, 점선 차선 사용
-        else if ((dotted_line[0][1] - dotted_line.back()[1]) >= height/5) {
-
-        }
-        else continue; //// 점선 차선도 발견 못한 경우 위로 피벗 이동하여 재시작
-    }
-
-    //// ------------- 오른쪽 차선 ------------------
-    for (int slide = 0; slide < (int)(slide_num / 2); slide++) {
-        // 초기화
-        line_points_right.clear(); dotted_line.clear();
-        // 해당 줄의 피벗 영상 추출
-        pivot_frame = frame(Range(height - gap - gap*slide, height - gap*slide), Range((int)((float)width*0.5), width));
-        // 피벗 영상에 대해 차선의 시작점 검출
-        findLines(pivot_frame, lines, gap);
-        if (lines.empty()) continue; // 검출 안되면 위로 슬라이딩하여 다시 검출
-        //// 각 시작점에 대해 차선 검출, 일정 길이 이상의 차선을 검출할 때까지 반복
-        for (auto &line : lines) {
-            // 검출된 선분의 시작점, 끝점
-            x1 = line[0] + (int)((float)width*0.5); y1 = line[1]; x2 = line[2] + (int)((float)width*0.5); y2 = line[3];
-            // 점 순서가 바뀌었을 경우 조정
-            if (y1 < y2) { x_temp = x2; y_temp = y2; x2 = x1; y2 = y1; x1 = x_temp; y1 = y_temp; }
-            // 시작점과 끝점을 벡터에 삽입
-            line_points_right.push_back(Point2i(x1, height - gap + y1 - gap*slide));
-            line_points_right.push_back(Point2i(x2, height - gap + y2 - gap*slide));
-            // 위 방향으로 차선 검출
-            searchLane(frame, line_points_right, x2, height - gap + y2 - gap*slide, gap);
-            if (line_points_right.size() == 2) continue; // 검출 안되면 다른 시작점에 대해 다시 실행
-            // 검출된 선의 길이
-            line_length = line_points_right[0][1] - line_points_right.back()[1];
-
-            //// 충분히 긴 직선이 검출되면 해당 선을 추종 차선으로 선택, 검색 종료
-            if (line_length >= min_length) break;
-                //// 실패한 경우 dotted_line 길이 업데이트, 다른 시작점에 대해 검사
-            else {
-                // dotted_line이 비어있을 경우 추가
-                if (dotted_line.empty()) {
-                    dotted_line.insert( dotted_line.end(), line_points_right.begin(), line_points_right.end() );
-                }
-                    // dotted_line이 비어있지 않을 경우 더 긴 차선으로 업데이트
-                else {
-                    if (line_length > (dotted_line[0][1] - line_points_right.back()[1])) {
-                        dotted_line.clear();
-                        dotted_line.insert( dotted_line.end(), line_points_right.begin(), line_points_right.end() );
-                    }
-                }
-                // 다른 시작점에 대해 검사
-                line_points_right.clear();
-                continue;
-            }
-        }
-
-        //// 실선 차선을 발견한 경우 검사 종료
-        if (!line_points_right.empty()) {
-            break;
-        }
-            //// 실선 차선 발견 못한 경우, 점선 차선 사용
-        else if ((dotted_line[0][1] - dotted_line.back()[1]) >= height/5) {
-        }
-        else continue; //// 점선 차선도 발견 못한 경우 위로 피벗 이동하여 재시작
-    }
-
-    // 이미지에 인식된 차선 그리기
-    cvtColor(frame, frame, COLOR_GRAY2BGR);
-    // 차선이 검출된 경우
-    if (!line_points_left.empty() || !line_points_right.empty()) {
-        line_points_left.push_back(Point2i(0, 0));
-        line_points_left.push_back(Point2i(0, height));
-        line_points_right.push_back(Point2i(width, 0));
-        line_points_right.push_back(Point2i(width, height));
-
-        // 양쪽 차선을 저장하여 차선 영역 폴리곤을 그릴 벡터
-        linePoints.push_back(line_points_left);
-        linePoints.push_back(line_points_right);
-        // 폴리곤 그리기
-        fillPoly(frame, linePoints, Scalar(255, 0, 255), LINE_AA);
-    }
-    else {
-        cout << "Lane not detected ㅜㅜ" << endl;
-    }
-
-    output = Mat::zeros(height, width, CV_8UC1);
-    fillPoly(output, linePoints, Scalar(255), LINE_AA);
-//    output = ~output;
-
-
-}
-
-
-// 흑백 이진 영상에서 오브젝트 경계를 검출
-void findBoundary(Mat &input, Mat &output) {
-    vector<vector<Point>> contours;
-    findContours(input, contours, RETR_LIST, CHAIN_APPROX_NONE);
-    output = Mat::zeros(input.rows, input.cols, CV_8UC1);
-    drawContours(output, contours, -1, 255, 5);
-}
-
-
 // 차선 영역을 검출하여, 코스트맵 반환
 void laneDetection(Mat &input, Mat &output) {
     Mat frame = input.clone();
@@ -352,8 +38,6 @@ void laneDetection(Mat &input, Mat &output) {
 }
 
 
-
-
 // 차선 영역을 검출하여, 코스트맵 반환
 void detection(Mat &input, Mat &output) {
     Mat frame = input.clone();
@@ -380,13 +64,6 @@ void detection(Mat &input, Mat &output) {
     output = frame;
 
 }
-
-
-
-
-
-
-
 
 
 // 그레이스케일 이진 이미지에 대하여, 검은 영역에 대해 방사형으로 코스트맵 생성
@@ -425,86 +102,90 @@ void createCostmap(Mat &input, Mat &output) {
 }
 
 
-void costTracker(Mat &input, Mat &output, vector<Vec2i> &route, vector<float> &angles, int pre_x, int pre_y, int direction_x, int direction_y, Mat &frame_show) {
 
-    Mat frame = input.clone();
-    Mat potential = frame.clone();
+// path planning : 충돌 여부 감지를 위해 이진 영상 dangerous 필요, frame_show는 BGR 이미지
+void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point, const Point2d& pre_direction, Mat &frame_show,
+                    const vector<double*>& object, vector<pair<double, double>> L, vector<pair<double, double>> R) {
 
-    int width = input.cols;
-    int height = input.rows;
+    int width = dangerous.cols;
+    int height = dangerous.rows;
 
-    Point2i startPoint(3*width/4, height);
+    // 차량의 속도 (벡터 크기)
+    double speed = 5;
+    // 퍼텐셜 반영비율
+    double alpha = 1;
+    // 시작점과 도착점 정의
+    Point2d startPoint((double)width * 3 / 4, (double)height);
+    Point2d now_point = pre_point;
+    Point2d now_direction(0, 0);
 
-    int now_x = pre_x, now_y = pre_y;
+    // 퍼텐셜 힘 계산
+    pair<double, double> diff_lane = make_pair(0,0), diff_object = make_pair(0,0);
+    diff_lane = diffByLane(L, R, pre_point.x, pre_point.y);
+    diff_object = diffByObject(object, pre_point.x, pre_point.y);
 
-    int gridSize = 5;
-    int direction_length = 5;
-    int minGap = 5;
+    // 방향벡터 계산
+    now_direction.x = pre_direction.x + alpha * (diff_lane.first + diff_object.first);
+    now_direction.y = pre_direction.y + alpha * (diff_lane.second + diff_object.second);
+    // 방향벡터 정규화
+    now_direction *= speed;
+    now_direction /= sqrt(pow(now_direction.x , 2) + pow(now_direction.y, 2));
 
-    int max_cost = -1, cost = -1;
+    // 도착점 계산
+    now_point += now_direction;
 
-    float direction_norm = sqrt(powf((float)direction_x, 2) + powf((float)direction_y, 2));
-    direction_x = (int)((float)direction_length * (float)direction_x / direction_norm);
-    direction_y = (int)((float)direction_length * (float)direction_y / direction_norm);
-
-    float temp_x = 1000000, temp_y = 10000000;
-
-
-    double slope = -1, angle = -1;
-    if (!route.empty()) {
-        slope = (double)(now_x - route.back()[0]) / (double)(route.back()[1] - now_y);
-        angles.push_back(atan(slope));
+    /// 경로 탐색이 더이상 불가능할 경우, 탐색 종료
+    uchar *dangerous_data = dangerous.data;
+    if ((int)dangerous_data[width * (int)now_point.y + (int)now_point.x] == 255) {
+        cout << "Cannot make path !!" << endl;
+        return;
     }
 
-    route.push_back(Vec2i(now_x, now_y));
-
-
-
-    if ((pre_x == now_x && pre_y == now_y) || max_cost <= 10) {
+    /// 프레임을 벗어날 경우, Path Planning 종료
+    if (now_point.x < 0 || now_point.y < 0 || now_point.x > width || now_point.y > height) {
         cout << "route size : " << route.size() << endl;
-
+        // 경로가 정상적으로 생성된 경우
         if (!route.empty()) {
-            slope = (double)(route[(int)(2)][0] - route[0][0]) / (double)(route[0][1] - route[(int)(2)][1]);
-            angle = atan(slope) * 180 / CV_PI;
+            double slope = (double)(route[2][0] - route[0][0]) / (double)(route[0][1] - route[2][1]);
+            double angle = atan(slope) * 180 / CV_PI;
+            cout << "Present steer : " << angle << endl;
 
-            cout << "angle : " << angle << endl;
-
-            cvtColor(frame, frame, COLOR_GRAY2BGR);
+            // 생성된 경로 그리기
             for (int i = 0; i < (int)route.size() - 1; i++) {
 //                line(frame, route[i], route[i+1], Scalar(0, 0, 255), 2);
             }
             for (int i = 0; i < (int)route.size() - 1; i++) {
-                circle(frame, route[i], 5, Scalar(50, 100, 150), -1);
+                circle(frame_show, route[i], 5, Scalar(150, 100, 150), -1);
             }
 
+            /// 점들을 곡선으로 근사 (Curve Fitting)
             vector<double> ans;
-            curveFitting(frame, frame, route, ans);
+            curveFitting(frame_show, frame_show, route, ans);
 
-            imageshow("curve fitting", frame);
+            imshow("curve fitting", frame_show);
+            waitKey();
 
 
+            /// 차량이 갈 수 있는 경로인지 탐색
             vector<Vec2i> route_car;
             vector<double> next_pos;
-            double steer = 0, pre_steer = 0, heading = -CV_PI/2, steer_temp;
-            double x1 = 0, x2 = 0;
-
+            double steer = 0, pre_steer = 0, heading, steer_temp;
             int count = 0, isColl = 0;
-
-
-
+            // 처음 차량의 시작지점
             route_car.push_back(Vec2i(startPoint.x, startPoint.y));
-
+            // 계획된 경로를 따라가면서, 차선 또는 물체와 부딪히는지 탐색
             while (true) {
+                // curve fitting된 함수 식으로부터 현재 가야하는 헤딩 방향 계산
                 pre_steer = steer;
                 steer = getSteerwithCurve(ans, route_car.back()[1]);
                 cout << "str : " << steer << endl;
                 heading = (-CV_PI / 2) + pre_steer;
-
+                // 조향 경계조건 설정
                 steer_temp = (steer - pre_steer);
                 cout << "dd : " << steer_temp << endl;
                 if (steer_temp > 0.3491) steer_temp = 0.3491;
                 else if (steer_temp < -0.3491) steer_temp = -0.3491;
-
+                // 다음 차량 위치 추정 및 이동
                 next_pos = PredictCar(steer_temp, 1.0,0.01, heading);
                 cout << "before: next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
                 cout << "route_car : " << route_car.back() << endl;
@@ -514,205 +195,41 @@ void costTracker(Mat &input, Mat &output, vector<Vec2i> &route, vector<float> &a
                 if (next_pos[0] < 0 || next_pos[0] > width || next_pos[1] < 0 || next_pos[1] > height) break;
                 route_car.push_back(Vec2i(next_pos[0],next_pos[1]));
                 next_pos.clear();
-
+                // 차량이 지나가는 경로 그리기
                 if (count % 10 == 0) {
-                    isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, potential);
-                }
-                count++;
-
+                    isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, dangerous);
+                } count++;
                 // 충돌 상황을 만나면 종료
                 if (isColl) {
                     cout << "collide !!" << endl;
                     break;
                 }
-
             }
+
+            // 차량이 지나간 경로 그리기
             for (int i = 0; i < (int)route_car.size() - 1; i++) {
                 line(frame_show, route_car[i], route_car[i+1], Scalar(255, 0, 255), 2);
             }
             for (int i = 0; i < (int)route_car.size(); i++) {
-                circle(frame_show, route_car[i], 3, Scalar(150, 150, 200), -1);
+                circle(frame_show, route_car[i], 3, Scalar(200, 150, 200), -1);
             }
 
-            waitKey();
-            imshow("path planning", frame);
+            cout << "searching path finished" << endl;
             imshow("simulation", frame_show);
-
-
-            output = frame;
-
-            return;
-
+            waitKey();
         }
-        else {
-            cout << "Lane not detected ㅜㅜ" << endl;
-        }
-
+        // route에 아무것도 저장되지 않은 경우
+        else { cout << "Lane not detected ㅜㅜ" << endl; }
 
         return;
     }
-    else costTracker(input, output, route, angles, now_x, now_y, now_x - pre_x, now_y - pre_y, frame_show);
+    /// 프레임을 벗어나지 않은 경우 path planning 경로 계속 탐색
+    else {
+        cout << "searching next position..." << endl;
+        costTracker(dangerous, route, now_point, now_direction, frame_show, object, L, R);
+    }
 
 }
-
-
-
-
-// path planning : 충돌 여부 감지를 위해 이진 영상 dangerous 필요
-void costTracker(Mat &dangerous, vector<Vec2i> &route, Point2d pre_point, Point2d pre_direction, Mat &frame_show) {
-
-//    int width = dangerous.cols;
-//    int height = dangerous.rows;
-//
-//    Point2d startPoint(3*width/4, height);
-//    Point2d now_point = pre_point;
-//    Point2d now_direction(0, 0);
-//
-//    pair<double, double> diff_lane = make_pair(0,0), diff_object = make_pair(0,0);
-//    diff_lane = diffByLane();
-//    diff_object = diffByObject();
-//
-//    now_direction.x = diff_lane.first + diff_object.first;
-//    now_direction.y = diff_lane.second + diff_object.second;
-//    now_point
-//
-//
-//
-//
-//
-//    int gridSize = 5;
-//    int direction_length = 5;
-//    int minGap = 5;
-//
-//    int max_cost = -1, cost = -1;
-//
-//    float direction_norm = sqrt(powf((float)direction_x, 2) + powf((float)direction_y, 2));
-//    direction_x = (int)((float)direction_length * (float)direction_x / direction_norm);
-//    direction_y = (int)((float)direction_length * (float)direction_y / direction_norm);
-//
-//    float temp_x = 1000000, temp_y = 10000000;
-//
-//
-//    pair<double, double> diff_lane = make_pair(0, 0), diff_object = make_pair(0, 0);
-//    diff_lane = diffByLane()
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//    double slope = -1, angle = -1;
-//    if (!route.empty()) {
-//        slope = (double)(now_x - route.back()[0]) / (double)(route.back()[1] - now_y);
-//        angles.push_back(atan(slope));
-//    }
-//
-//    route.push_back(Vec2i(now_x, now_y));
-//
-//
-//
-//    if ((pre_x == now_x && pre_y == now_y) || max_cost <= 10) {
-//        cout << "route size : " << route.size() << endl;
-//
-//        if (!route.empty()) {
-//            slope = (double)(route[(int)(2)][0] - route[0][0]) / (double)(route[0][1] - route[(int)(2)][1]);
-//            angle = atan(slope) * 180 / CV_PI;
-//
-//            cout << "angle : " << angle << endl;
-//
-//            cvtColor(frame, frame, COLOR_GRAY2BGR);
-//            for (int i = 0; i < (int)route.size() - 1; i++) {
-////                line(frame, route[i], route[i+1], Scalar(0, 0, 255), 2);
-//            }
-//            for (int i = 0; i < (int)route.size() - 1; i++) {
-//                circle(frame, route[i], 5, Scalar(50, 100, 150), -1);
-//            }
-//
-//            vector<double> ans;
-//            curveFitting(frame, frame, route, ans);
-//
-//            imageshow("curve fitting", frame);
-//
-//
-//            vector<Vec2i> route_car;
-//            vector<double> next_pos;
-//            double steer = 0, pre_steer = 0, heading = -CV_PI/2, steer_temp;
-//            double x1 = 0, x2 = 0;
-//
-//            int count = 0, isColl = 0;
-//
-//
-//
-//            route_car.push_back(Vec2i(startPoint.x, startPoint.y));
-//
-//            while (true) {
-//                pre_steer = steer;
-//                steer = getSteerwithCurve(ans, route_car.back()[1]);
-//                cout << "str : " << steer << endl;
-//                heading = (-CV_PI / 2) + pre_steer;
-//
-//                steer_temp = (steer - pre_steer);
-//                cout << "dd : " << steer_temp << endl;
-//                if (steer_temp > 0.3491) steer_temp = 0.3491;
-//                else if (steer_temp < -0.3491) steer_temp = -0.3491;
-//
-//                next_pos = PredictCar(steer_temp, 1.0,0.01, heading);
-//                cout << "before: next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
-//                cout << "route_car : " << route_car.back() << endl;
-//                next_pos[0] += route_car.back()[0];
-//                next_pos[1] += route_car.back()[1];
-//                cout << "after : next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
-//                if (next_pos[0] < 0 || next_pos[0] > width || next_pos[1] < 0 || next_pos[1] > height) break;
-//                route_car.push_back(Vec2i(next_pos[0],next_pos[1]));
-//                next_pos.clear();
-//
-//                if (count % 10 == 0) {
-//                    isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, potential);
-//                }
-//                count++;
-//
-//                // 충돌 상황을 만나면 종료
-//                if (isColl) {
-//                    cout << "collide !!" << endl;
-//                    break;
-//                }
-//
-//            }
-//            for (int i = 0; i < (int)route_car.size() - 1; i++) {
-//                line(frame_show, route_car[i], route_car[i+1], Scalar(255, 0, 255), 2);
-//            }
-//            for (int i = 0; i < (int)route_car.size(); i++) {
-//                circle(frame_show, route_car[i], 3, Scalar(150, 150, 200), -1);
-//            }
-//
-//            waitKey();
-//            imshow("path planning", frame);
-//            imshow("simulation", frame_show);
-//
-//
-//            output = frame;
-//
-//            return;
-//
-//        }
-//        else {
-//            cout << "Lane not detected ㅜㅜ" << endl;
-//        }
-//
-//
-//        return;
-//    }
-//    else costTracker(input, output, route, angles, now_x, now_y, now_x - pre_x, now_y - pre_y, frame_show);
-
-}
-
-
-
-
 
 
 //input : 조향각, 속력, 이동하는 데 걸리는 시간
@@ -781,12 +298,11 @@ vector<double> PredictCar(double init_str, double V_r, double dt1, double headin
 }
 
 
-
 // 점의 방정식을 곡선으로 근사
 void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> &ans) {
 
     if (route.size() <= 3) {
-        cerr << "no Point to fitting !" << endl;
+        cerr << "Lack of Points to fitting !" << endl;
         return;
     }
 
@@ -798,10 +314,10 @@ void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> 
     Mat A;
 
 
-// A를 완성시키는 이중 for문
+    // A를 완성시키는 이중 for문
+    // 3 차 방정식으로 근사한다. 이 숫자 바꿔 주면 n-1 차 방정식까지 근사 가능.
     for (int i = 0; i < n; i++) {
         vector<double> tmp;
-// 3 차 방정식으로 근사한다. 이 숫자 바꿔 주면 n-1 차 방정식까지 근사 가능.
         for (int j = 3; j >= 0; j--) {
             double x = v[i].second; // x 하고 y 를 바꾸기로 함. 그래야 함수가 만들어지니까
             tmp.push_back(pow(x,j));
@@ -809,11 +325,7 @@ void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> 
         A.push_back(Mat(tmp).t());
     }
 
-    cout << "A: " << endl;
-    cout << A << endl;
-
     Mat B; // B 에는 y 좌표들을 저장한다.
-
     vector<double> tmp;
     for (int i = 0; i < n; i++) {
         double y = v[i].first; // x 하고 y 바꾸기로 함. 그래야 함수가 만들어지니까
@@ -821,42 +333,36 @@ void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> 
     }
     B.push_back(Mat(tmp));
 
-    cout << "B: " << endl;
-    cout << B << endl;
+    // X = invA * B; // X = A(-1)B
+    Mat X = ((A.t() * A).inv()) * A.t() * B;
 
-    Mat X;
-// X = invA * B; // X = A(-1)B
-    X = ((A.t() * A).inv()) * A.t() * B;
-
-
-    cout << "X: " << endl;
-    cout << X << endl;
-
-// X 에서 차례대로 뽑아내서 ans 에 담는다.
-// 몇차 방정식으로 근사할껀지 정할때 건드려줘야 되는부분, 3차 방정식으로 근사할꺼면 4 ㅇㅇ.
+    // X 에서 차례대로 뽑아내서 ans 에 담는다.
+    // 몇차 방정식으로 근사할껀지 정할때 건드려줘야 되는부분, 3차 방정식으로 근사할꺼면 4 ㅇㅇ.
     for (int i = 0; i < 4; i++) {
         ans.push_back(X.at<double>(i, 0));
     }
-// 앞에서 부터 0인지 검사해서 0이면 지운다. 차수 조절을 위하여. 가운데 0은 안지워짐.
+    // 앞에서 부터 0인지 검사해서 0이면 지운다. 차수 조절을 위하여. 가운데 0은 안지워짐.
     while (!ans.empty()) {
         if (ans.at(0) == 0) ans.erase(ans.begin());
         else break;
     }
     double coef[900];
-    int ans_size = ans.size(); // ans_size - 1 차 다항식이 만들어진거고, ans_size만큼 a,b,c,d,e `` 가 있다.
+    // ans_size - 1 차 다항식이 만들어진거고, ans_size만큼 a,b,c,d,e `` 가 있다.
+    int ans_size = ans.size();
 
-// 벡터보다 배열에 접근하는게 훨 빠르기 때문에 후에 계산을 위하여 배열에 넣어주었다.
+    // 벡터보다 배열에 접근하는게 훨 빠르기 때문에 후에 계산을 위하여 배열에 넣어주었다.
     for (int i = 0; i < ans_size; i++) {
         coef[i] = ans.at(i);
     }
 
+    // 계산된 곡선 그리기
+    output = input.clone();
     for (int i = (int)input.rows; i >= 1; i -= 2) {
         double x1 = 0, x2 = 0;
         for (int j = 0; j < ans_size; j++) {
             x1 += coef[j] * pow(i, ans_size - 1 - j);
             x2 += coef[j] * pow(i - 1, ans_size - 1 - j);
         }
-        output = input.clone();
         line(output, Point(x1, i ), Point(x2, i - 1), Scalar(0, 0, 255), 2);
     }
 
@@ -888,8 +394,6 @@ double getSteerwithCurve(vector<double> &ans, int y) {
     return descent_rad;
 
 }
-
-
 
 
 // 차의 위치와 헤딩을 넣으면 차량 영역이 그려진 영상을 반환
@@ -969,10 +473,6 @@ bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &poten
 }
 
 
-
-
-
-
 ///-------------------------------------
 
 vector<double*> get_obj_info(vector<pair<double, double>> obj_move, double r) {
@@ -1033,13 +533,12 @@ double potentialByLane(vector<pair<double, double>> L, vector<pair<double, doubl
 
 
 
-pair<double, double> diffByObject(vector<double*> object, int now_frame, double get_x, double get_y) {
-    int i = now_frame;
-    double x = object[i][0];
-    double y = object[i][1];
-    double x_v = object[i][2];
-    double y_v = object[i][3];
-    double r = object[i][4];
+pair<double, double> diffByObject(vector<double*> object, double get_x, double get_y) {
+    double x = object[0][0];
+    double y = object[0][1];
+    double x_v = object[0][2];
+    double y_v = object[0][3];
+    double r = object[0][4];
     double diff_x = (get_x - x) * (1 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2))));
     double diff_y = (get_y - y) * (1 * exp(-0.00005 * (pow(get_y - y, 2) + pow(get_x - x, 2))));
     return make_pair(diff_x, diff_y);
@@ -1089,7 +588,7 @@ void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<doub
     pair<double, double> diff_lane = make_pair(0, 0), diff_object = make_pair(0, 0);
     for (int i = 0; i < height; i += showing_gap * 10) {
         for (int j = 0; j < width; j += showing_gap * 10) {
-            diff_object = diffByObject(object, 0, j, i);
+            diff_object = diffByObject(object, j, i);
 //            diff_lane = diffByLane(L, R, j, i);
             arrowedLine(frame_show, Point2d(j, i), Point2d(j + diff_object.first + diff_lane.first, i + diff_object.second + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
         }
@@ -1238,10 +737,7 @@ void DynamicPotential() {
 
 
 
-
 ///------------------------------------------------
-
-
 
 void getMovingFrame(Mat &frame, int time) {
 
@@ -1358,7 +854,6 @@ void simulation(Mat &input, Mat &output) {
 
 
 
-
 ///----------------------------------
 //차량과 물체의 거리 차이 |d| 를 알려주는 함수 -> 분자
 double distance(pair<double, double> car, pair<double, double > object) {
@@ -1374,7 +869,8 @@ double inner_product(pair<double, double> v_rel, pair<double, double> d_rel) {
     return inner;
 }
 
-double TTC_master(pair<double, double> car, pair<double, double > object, pair<double, double> car_heading, pair<double, double> object_heading, double car_velocity, double object_velocity) {
+double TTC_master(pair<double, double> car, pair<double, double > object,
+                pair<double, double> car_heading, pair<double, double> object_heading, double car_velocity, double object_velocity) {
     double v_rel_x = (object_heading.first - car_heading.first) * car_velocity;
     double v_rel_y = (object_heading.second - car_heading.second) * car_velocity;
     pair<double, double> v_rel = make_pair(v_rel_x, v_rel_y);
