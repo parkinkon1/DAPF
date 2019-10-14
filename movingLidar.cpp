@@ -3,6 +3,8 @@
 //
 
 #include "movingLidar.h"
+#include "preProcessing.h"
+
 
 // 차선 영역을 검출하여, 코스트맵 반환
 void laneDetection(Mat &input, Mat &output) {
@@ -90,22 +92,22 @@ void createCostmap(Mat &input, Mat &output) {
     // 처리 속도 조절을 위한 리사이즈
     resize(frame, output, Size(input_width, input_height));
 
-    vector<Vec2i> route, route_car;
+    vector<Point2d> route, route_car;
     vector<double> next_pos;
     vector<float> angles;
 
     Mat frame_show = input.clone();
     cvtColor(input, frame_show, COLOR_GRAY2BGR);
     imshow("costmap", frame);
-    costTracker(frame, frame, route, angles, 3*width/4, height, 0, -5, frame_show);
+//    costTracker(frame, frame, route, angles, 3*width/4, height, 0, -5, frame_show);
 
 }
 
 
 
 // path planning : 충돌 여부 감지를 위해 이진 영상 dangerous 필요, frame_show는 BGR 이미지
-void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point, const Point2d& pre_direction, Mat &frame_show,
-                    const vector<double*>& object, vector<pair<double, double>> L, vector<pair<double, double>> R) {
+void costTracker(Mat &dangerous, vector<Point2d> &route, vector<Point2d> &route_car, const Point2d& pre_point, const Point2d& pre_direction, Mat &frame_show,
+                 vector<pair<Point2i, double>> object_list, const vector<pair<double, double>>& L, const vector<pair<double, double>>& R) {
 
     int width = dangerous.cols;
     int height = dangerous.rows;
@@ -115,38 +117,42 @@ void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point,
     // 퍼텐셜 반영비율
     double alpha = 1;
     // 시작점과 도착점 정의
-    Point2d startPoint((double)width * 3 / 4, (double)height);
     Point2d now_point = pre_point;
     Point2d now_direction(0, 0);
 
     // 퍼텐셜 힘 계산
     pair<double, double> diff_lane = make_pair(0,0), diff_object = make_pair(0,0);
     diff_lane = diffByLane(L, R, pre_point.x, pre_point.y);
-    diff_object = diffByObject(object, pre_point.x, pre_point.y);
-
+    diff_object = diffByObject(object_list, pre_point.x, pre_point.y);
+    cout << "diff lane : " << diff_lane.first << " " << diff_lane.second << endl;
+    cout << "diff object : " << diff_object.first << " " << diff_object.second << endl;
     // 방향벡터 계산
     now_direction.x = pre_direction.x + alpha * (diff_lane.first + diff_object.first);
     now_direction.y = pre_direction.y + alpha * (diff_lane.second + diff_object.second);
     // 방향벡터 정규화
-    now_direction *= speed;
     now_direction /= sqrt(pow(now_direction.x , 2) + pow(now_direction.y, 2));
-
+    now_direction *= speed;
+    cout << "direction  : " << now_direction << endl;
     // 도착점 계산
     now_point += now_direction;
+    cout << "now point : " << now_point << endl;
 
     /// 경로 탐색이 더이상 불가능할 경우, 탐색 종료
-    uchar *dangerous_data = dangerous.data;
-    if ((int)dangerous_data[width * (int)now_point.y + (int)now_point.x] == 255) {
-        cout << "Cannot make path !!" << endl;
-        return;
-    }
+//    uchar *dangerous_data = dangerous.data;
+//    if ((int)dangerous_data[width * (int)now_point.y + (int)now_point.x] == 0) {
+//        cout << "cost : " << (int)dangerous_data[width * (int)now_point.y + (int)now_point.x] << endl;
+//        cout << "Cannot make path !!" << endl;
+//        return;
+//    }
 
     /// 프레임을 벗어날 경우, Path Planning 종료
-    if (now_point.x < 0 || now_point.y < 0 || now_point.x > width || now_point.y > height) {
+    uchar *dangerous_data = dangerous.data;
+    if (now_point.x < 0 || now_point.y < 0 || now_point.x > width || now_point.y > height ||
+            (int)dangerous_data[width * (int)now_point.y + (int)now_point.x] == 0) {
         cout << "route size : " << route.size() << endl;
         // 경로가 정상적으로 생성된 경우
         if (!route.empty()) {
-            double slope = (double)(route[2][0] - route[0][0]) / (double)(route[0][1] - route[2][1]);
+            double slope = (double)(route[2].x - route[0].x) / (double)(route[0].y - route[2].y);
             double angle = atan(slope) * 180 / CV_PI;
             cout << "Present steer : " << angle << endl;
 
@@ -167,17 +173,14 @@ void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point,
 
 
             /// 차량이 갈 수 있는 경로인지 탐색
-            vector<Vec2i> route_car;
             vector<double> next_pos;
             double steer = 0, pre_steer = 0, heading, steer_temp;
             int count = 0, isColl = 0;
-            // 처음 차량의 시작지점
-            route_car.push_back(Vec2i(startPoint.x, startPoint.y));
             // 계획된 경로를 따라가면서, 차선 또는 물체와 부딪히는지 탐색
             while (true) {
                 // curve fitting된 함수 식으로부터 현재 가야하는 헤딩 방향 계산
                 pre_steer = steer;
-                steer = getSteerwithCurve(ans, route_car.back()[1]);
+                steer = getSteerwithCurve(ans, route_car.back().y);
                 cout << "str : " << steer << endl;
                 heading = (-CV_PI / 2) + pre_steer;
                 // 조향 경계조건 설정
@@ -186,17 +189,17 @@ void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point,
                 if (steer_temp > 0.3491) steer_temp = 0.3491;
                 else if (steer_temp < -0.3491) steer_temp = -0.3491;
                 // 다음 차량 위치 추정 및 이동
-                next_pos = PredictCar(steer_temp, 1.0,0.01, heading);
+                next_pos = PredictCar(steer_temp, 5.0,0.01, heading);
                 cout << "before: next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
                 cout << "route_car : " << route_car.back() << endl;
-                next_pos[0] += route_car.back()[0];
-                next_pos[1] += route_car.back()[1];
+                next_pos[0] += route_car.back().x;
+                next_pos[1] += route_car.back().y;
                 cout << "after : next_pos : " << next_pos[0] << " " << next_pos[1]<< endl;
                 if (next_pos[0] < 0 || next_pos[0] > width || next_pos[1] < 0 || next_pos[1] > height) break;
-                route_car.push_back(Vec2i(next_pos[0],next_pos[1]));
+                route_car.push_back(Point2d(next_pos[0],next_pos[1]));
                 next_pos.clear();
                 // 차량이 지나가는 경로 그리기
-                if (count % 10 == 0) {
+                if (count % 1 == 0) {
                     isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, dangerous);
                 } count++;
                 // 충돌 상황을 만나면 종료
@@ -226,7 +229,8 @@ void costTracker(Mat &dangerous, vector<Vec2i> &route, const Point2d& pre_point,
     /// 프레임을 벗어나지 않은 경우 path planning 경로 계속 탐색
     else {
         cout << "searching next position..." << endl;
-        costTracker(dangerous, route, now_point, now_direction, frame_show, object, L, R);
+        route.push_back(Point2d(now_point.x, now_point.y));
+        costTracker(dangerous, route, route_car, now_point, now_direction, frame_show, object_list, L, R);
     }
 
 }
@@ -299,7 +303,7 @@ vector<double> PredictCar(double init_str, double V_r, double dt1, double headin
 
 
 // 점의 방정식을 곡선으로 근사
-void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> &ans) {
+void curveFitting(Mat &input, Mat &output, vector<Point2d> &route, vector<double> &ans) {
 
     if (route.size() <= 3) {
         cerr << "Lack of Points to fitting !" << endl;
@@ -308,7 +312,7 @@ void curveFitting(Mat &input, Mat &output, vector<Vec2i> &route, vector<double> 
 
     vector<pair<double, double>> v;
     for (auto & i : route) {
-        v.push_back(make_pair((double)i[0], (double)i[1]));
+        v.push_back(make_pair(i.x, i.y));
     }
     int n = v.size();
     Mat A;
@@ -397,7 +401,7 @@ double getSteerwithCurve(vector<double> &ans, int y) {
 
 
 // 차의 위치와 헤딩을 넣으면 차량 영역이 그려진 영상을 반환
-bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &potential) {
+bool drawCar(Mat &input, Mat &output, Point2d point_car, float heading, Mat &potential) {
 
     output = input.clone();
     int width = input.cols;
@@ -406,8 +410,8 @@ bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &poten
     float descent_rad = heading + CV_PI/2;
     float heading_deg = heading * 180 / CV_PI;
 
-    float carCenX = point_car[0];
-    float carCenY = point_car[1];
+    float carCenX = point_car.x;
+    float carCenY = point_car.y;
     double car_width = 40;
     double car_height = 60;
 
@@ -437,7 +441,7 @@ bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &poten
             rot_x += carCenX;
             rot_y += carCenY;
 
-            if (rot_x <= 0 || rot_y <= 0 || rot_x >= width || rot_y >= height) {
+            if (rot_x <= 0 || rot_y <= 0 || (int)rot_x >= width || (int)rot_y >= height) {
                 continue;
             }
             else if (potentialData[(int)rot_y * width + (int)rot_x] <= maxPotential) {
@@ -454,17 +458,6 @@ bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &poten
 
     return false;
 
-//    vector<float> pointSet;
-//
-//    int arraySize = sizeof(pts1) / sizeof(*pts1);
-//
-//    for (int i = 0; i < arraySize; i++) {
-//        pointSet[2 * i] = pts1[i].x;
-//        pointSet[2 * i + 1] = pts1[i].y;
-//    }
-//
-//    return isCollision(pointSet, potential);
-
 
 //    Point2d arrowCen(carCenX, carCenY); //화살표 꼬리 좌표
 //    Point2d arrowPoint(carCenX - 120*sin(-1*descent_rad), carCenY + 160*cos(-descent_rad)); //화살표 머리 좌표
@@ -475,57 +468,71 @@ bool drawCar(Mat &input, Mat &output, Vec2i point_car, float heading, Mat &poten
 
 ///-------------------------------------
 
-vector<double*> get_obj_info(vector<pair<double, double>> obj_move, double r) {
+vector<double*> get_obj_info(const vector<pair<Point2i, double>>& obj_move) {
     vector<double*> v;
-    for (int i = 0; i < (int)obj_move.size() - 1; i++) {
-        double d[5];
-        d[0] = obj_move[i].first;
-        d[1] = obj_move[i].second;
-        d[2] = obj_move[i + 1].first - d[0];
-        d[3] = obj_move[i + 1].second - d[1];
-        d[4] = r;
+    for (auto & i : obj_move) {
+        double d[3];
+        d[0] = i.first.x; // x 좌표
+        d[1] = i.first.y; // y 좌표
+        d[2] = i.second; // 반지름
         v.push_back(d);
     }
     return v;
 }
 
 
-double potentialByObject(vector<double*> object, double get_x, double get_y) {
+double potentialByObject(const vector<pair<Point2i, double>>& object_list, double get_x, double get_y) {
+    double alpha = 10;
     double z = 0;
-    for (int i = 0; i < object.size(); i++) {
-        double x = object[i][0];
-        double y = object[i][1];
-        double x_v = object[i][2];
-        double y_v = object[i][3];
-        double r = object[i][4];
+    double distance = 0;
+    double x, y, r;
 
-        // z += (100 - 10 * i) * exp(-0.005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-        double distance = pow(pow(get_x - x, 2) + pow(get_y - y, 2), (1 / 2)); // get_x, get_y 가 object하고 가까우면 값이 더해져야지
-        if (distance != 0) {
-            z += -1 / distance;
+    for (auto & i : object_list) {
+        x = i.first.x;
+        y = i.first.y;
+        r = i.second;
+        distance = sqrt(pow(get_x - x, 2) + pow(get_y - y, 2));
+        // 물체 내부에 있는 경우
+        if (distance <= r) {
+            z = 255;
+            break;
         }
-        else{
-            z += 255;
+        // 물체 외부에 있는 경우
+        else {
+            z += 255 * alpha / abs(distance - r);
         }
+    }
 
-    }
-    if (z > 100) {
-        return 100;
-    }
     return z;
 }
 
 
 double potentialByLane(vector<pair<double, double>> L, vector<pair<double, double>> R, double get_x, double get_y) {
+    double alpha = 20;
+    double distance_L = 0, distance_R;
+    double z;
+    double x1 = L[(int)get_y].first;
+    double x2 = R[(int)get_y].first;
+    // 왼쪽 차선 힘 계산
+    distance_L = get_x - x1;
+    if (distance_L == 0) z = 0;
+    else z = 255 * alpha / abs(distance_L);
+    // 오른쪽 차선 힘 계산
+    distance_R = get_x - x2;
+    if (distance_R == 0) z = 0;
+    else z += 255 * alpha / abs(distance_R);
+
+    return z;
+}
+
+
+
+double potentialByDottedLane(vector<pair<double, double>> dotted, double get_x, double get_y) {
     double z = 0;
 
-    int i = get_y;
-    double x = L[i].first;
-    double y = L[i].second;
-    z += 255 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
-
-    x = R[i].first;
-    y = R[i].second;
+    int i = (int)get_y;
+    double x = dotted[i].first;
+    double y = dotted[i].second;
     z += 255 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2)));
 
     return z;
@@ -533,72 +540,104 @@ double potentialByLane(vector<pair<double, double>> L, vector<pair<double, doubl
 
 
 
-pair<double, double> diffByObject(vector<double*> object, double get_x, double get_y) {
-    double x = object[0][0];
-    double y = object[0][1];
-    double x_v = object[0][2];
-    double y_v = object[0][3];
-    double r = object[0][4];
-    double diff_x = (get_x - x) * (1 * exp(-0.00005 * (pow(get_x - x, 2) + pow(get_y - y, 2))));
-    double diff_y = (get_y - y) * (1 * exp(-0.00005 * (pow(get_y - y, 2) + pow(get_x - x, 2))));
+pair<double, double> diffByObject(const vector<pair<Point2i, double>>& object_list, double get_x, double get_y) {
+    double alpha = 500;
+    double distance = 0;
+    double dx = 0, dy = 0;
+    double diff_x = 0, diff_y = 0;
+    double x, y, r;
+    for (auto & i : object_list) {
+        x = i.first.x;
+        y = i.first.y;
+        r = i.second;
+        dx = get_x - x;
+        dy = get_y - y;
+        // 거리 계산
+        distance = sqrt(pow(get_x - x, 2) + pow(get_y - y, 2));
+        // 오브젝트 힘 계산
+        if (distance <= r) {
+            diff_x = 0;
+            diff_y = 0;
+            break;
+        }
+        else {
+            diff_x += (dx - r * (dx / distance)) * alpha / pow(pow(distance - r, 2), 3/2);
+            diff_y += (dy - r * (dy / distance)) * alpha / pow(pow(distance - r, 2), 3/2);
+        }
+    }
     return make_pair(diff_x, diff_y);
 }
 
 
 
 pair<double, double> diffByLane(vector<pair<double, double>> L, vector<pair<double, double>> R, double get_x, double get_y) {
-    int i = get_y;
-    double x1 = L[i].first;
-    double y1 = L[i].second;
+    double alpha = 100;
+    double distance_L = 0, distance_R = 0;
+    double diff_x = 0, diff_y = 0;
+    double x1 = L[(int)get_y].first;
+    double x2 = R[(int)get_y].first;
+    // 왼쪽 차선 힘 계산
+    distance_L = get_x - x1;
+    if (distance_L == 0) diff_x = 0;
+    else if (distance_L < 0) diff_x = -255 * alpha / pow(distance_L, 2);
+    else diff_x = 255 * alpha / pow(distance_L, 2);
+    // 오른쪽 차선 힘 계산
+    distance_R = get_x - x2;
+    if (distance_R == 0) diff_x = 0;
+    else if (distance_R < 0) diff_x += -255 * alpha / pow(distance_R, 2);
+    else diff_x += 255 * alpha / pow(distance_R, 2);
 
-    double diff_x = 1 * (get_x - x1) * log10(exp(1)) * exp(-0.00005 * (pow(get_x - x1, 2) + pow(get_y - y1, 2)));
-//    double diff_y = -0.000005 * (get_y - y1) * log10(exp(1)) * exp(-0.5 * (pow(get_y - y1, 2) + pow(get_x - x1, 2)));
-    double diff_y = 0;
+    diff_y = 0;
 
-    double x2 = R[i].first;
-    double y2 = R[i].second;
-    diff_x += 1 * (get_x - x2) * log10(exp(1)) * exp(-0.00005 * (pow(get_x - x2, 2) + pow(get_y - y2, 2)));
-//    diff_y += -0.000005 * (get_y - y2) * log10(exp(1)) * exp(-0.5 * (pow(get_y - y2, 2) + pow(get_x - x2, 2)));
-    return make_pair(diff_x, diff_y);
+    return make_pair(diff_x, diff_y - 10);
 }
 
 
 
-void show_potentialField(Mat &dstImage, vector<double*> object, vector<pair<double, double>> L, vector<pair<double, double>> R) {
+pair<double, double> diffByDottedLane(vector<pair<double, double>> dotted, double get_x, double get_y) {
+    int i = (int)get_y;
+    double distance = 0, distance2 = 0;
+
+    double x = dotted[(int)get_y].first;
+    distance2 = pow(get_x - x, 2);
+
+    double diff_x = 1 * (get_x - x) * log10(exp(1)) * exp(-0.00005 * distance2);
+//    double diff_y = -0.000005 * (get_y - y1) * log10(exp(1)) * exp(-0.5 * (pow(get_y - y1, 2) + pow(get_x - x1, 2)));
+    double diff_y = 0;
+
+    return make_pair(diff_x, diff_y - 10);
+}
+
+
+
+
+void show_potentialField(Mat &dstImage, vector<pair<Point2i, double>> object_list, vector<pair<double, double>> L, vector<pair<double, double>> R) {
 
     int width = 600;
     int height = 900;
     Mat frame_show(height, width, CV_8UC3, Scalar(255, 255, 255));
 
-    int showing_gap = 3;
+    int showing_gap = 2;
 
     cout << "visualization..." << endl;
-
     double cost = 0;
     for (int i = 0; i < height; i += showing_gap) {
         for (int j = 0; j < width; j += showing_gap) {
-            cost += potentialByObject(object, j, i);
-//            cost = potentialByLane(L, R, j, i);
+            cost = potentialByObject(object_list, j, i);
+            cost += potentialByLane(L, R, j, i);
             circle(frame_show, Point(j, i), showing_gap, Scalar(255 - cost, 255 - cost, 255 - cost), -1);
         }
     }
-
     cout << "visualizing vectors..." << endl;
-
     pair<double, double> diff_lane = make_pair(0, 0), diff_object = make_pair(0, 0);
     for (int i = 0; i < height; i += showing_gap * 10) {
         for (int j = 0; j < width; j += showing_gap * 10) {
-            diff_object = diffByObject(object, j, i);
-//            diff_lane = diffByLane(L, R, j, i);
+            diff_object = diffByObject(object_list, j, i);
+            diff_lane = diffByLane(L, R, j, i);
             arrowedLine(frame_show, Point2d(j, i), Point2d(j + diff_object.first + diff_lane.first, i + diff_object.second + diff_lane.second), Scalar(0, 0, 255), 2, 5, 0, 0.1);
         }
     }
-
-
     cout << "visualization finished" << endl;
-
-    imshow("Visualization", frame_show);
-    waitKey(0);
 
     dstImage = frame_show;
 }
@@ -739,60 +778,70 @@ void DynamicPotential() {
 
 ///------------------------------------------------
 
+// 매 시간마다 처리된 프레임을 반환
 void getMovingFrame(Mat &frame, int time) {
 
-    Mat dstImage(900, 600, CV_8UC3, Scalar(255, 255, 255));
-
-    vector<pair<double, double>> L;
-    vector<pair<double, double>> R;
+    /// 초기 설정 ---------------------------------
+    // 시뮬레이션을 진행할 이미지
+    int width = 600, height = 900;
+    Mat road(height, width, CV_8UC3, Scalar(255, 255, 255));
+    Mat road_black(height, width, CV_8UC1, Scalar(255));
+//    cvtColor(road, road_black, COLOR_BGR2GRAY);
+    /// 초기 차선 설정
+    cout << "generating lanes..." << endl;
+    vector<pair<double, double>> L, R;
     for (int i = 0; i < 900; i++) {
         L.push_back(make_pair(100, i));
-    }
-    for (int i = 0; i < 900; i++) {
         R.push_back(make_pair(500, i));
     }
-
-    cout << "generating objects..." << endl;
-
-    vector<pair<double, double>> obj_move;
-    obj_move.push_back(make_pair(50, 100));
-    obj_move.push_back(make_pair(100, 200));
-    obj_move.push_back(make_pair(150, 300));
-    obj_move.push_back(make_pair(200, 350));
-    obj_move.push_back(make_pair(250, 400));
-    obj_move.push_back(make_pair(300, 430));
-    obj_move.push_back(make_pair(350, 460));
-    obj_move.push_back(make_pair(400, 490));
-    obj_move.push_back(make_pair(450, 520));
-    obj_move.push_back(make_pair(500, 600));
-    obj_move.push_back(make_pair(550, 650));
-    obj_move.push_back(make_pair(600, 700));
-
-    vector<double*> obj_info = get_obj_info(obj_move, 50);
-
-
-    cout << "generating objects finished" << endl;
-    cout << "generating lanes..." << endl;
-
-    vector<pair<double, double>> points_lane_left, points_lane_right;
-
-    for (int i = 0; i < 900; i++) {
-        points_lane_left.push_back(make_pair(0, i));
-        points_lane_right.push_back(make_pair(600, i));
+    // 차선 그리기
+    for (int i = 0; i < (int)L.size(); i += 10) {
+        cout << L[i].first << " " << L[i].second << endl;
+        circle(road_black, Point2d(L[i].first, L[i].second), 5, Scalar(0), -1);
     }
-
-
+    for (int i = 0; i < (int)R.size(); i += 10) {
+        circle(road_black, Point2d(R[i].first, R[i].second), 5, Scalar(0), -1);
+    }
     cout << "generating lanes finished" << endl;
+    /// 초기 오브젝트 설정
+    cout << "generating objects..." << endl;
+    vector<pair<Point2i, double>> object_list;
+    object_list.push_back(make_pair(Point2i(300, 450), 100));
+    object_list.push_back(make_pair(Point2i(500, 100), 100));
+    object_list.push_back(make_pair(Point2i(100, 100), 100));
+    // 오브젝트 그리기
+    for (int i = 0; i < (int)object_list.size(); i++) {
+        circle(road_black, object_list[i].first, object_list[i].second, Scalar(0), -1);
+    }
+    cout << "generating objects finished" << endl;
+
+    /// 전처리 -----------------------------------
+    Mat dangerous = road_black.clone();
+    Mat frame_show = road.clone();
+
+    // 퍼텐셜 필드 시각화
     cout << "generating potential field..." << endl;
-
-    show_potentialField(dstImage, obj_info, L, R);
-
+    show_potentialField(frame_show, object_list, L, R);
     cout << "generating potential field finished" << endl;
 
+    imshow("dangerous", dangerous);
+    imshow("frame_show", frame_show);
+    waitKey();
 
-    for (int i = 0; i < (int)obj_move.size(); i++) {
-        circle(dstImage, Point(obj_move[i].second, obj_move[i].first), 100, Scalar(0, 0, 255), 3);
-    }
+
+    /// 경로 추적
+    Mat frame_show2;
+    cvtColor(dangerous, frame_show2, COLOR_GRAY2BGR);
+    // 시작점, 도착점
+    Point2d start_point(width * 2.1 / 4, height);
+    Point2d start_direction(0, -5);
+    // 차량 경로 저장
+    vector<Point2d> route, route_car;
+    route.push_back(start_point);
+    route_car.push_back(start_point);
+    // 진행경로 추적 시작
+    costTracker(dangerous, route, route_car, start_point, start_direction, frame_show2, object_list, L, R);
+
 
 
 
@@ -802,51 +851,32 @@ void getMovingFrame(Mat &frame, int time) {
 
 
 void simulation(Mat &input, Mat &output) {
-    Mat frame = input.clone();
-    Mat frame_show = input.clone();
-    // 인풋 이미지 크기
-    int input_width = input.cols;
-    int input_height = input.rows;
-//    // 이미지 처리를 위한 리사이징 크기
-//    int width = input_width/4;
-//    int height = input_height/4;
 
+    Mat dangerous;
+    Mat frame_show;
+    vector<Point2d> route, route_car;
+    Point2d start_point;
+    Point2d start_direction;
 
-    // 원본 이미지 (BGR)
-    imshow("origin", frame);
-    // 이미지 이진화 (Binary)
-    binarization(frame, frame);
-    imshow("binarization", frame);
-    waitKey();
-
-    // 코스트맵 생성 (Gray)
-    createCostmap(frame, frame_show);
-    imshow("costmap", frame);
-
-    output = frame;
+    vector<pair<Point2i, double>> object_list;
+    vector<pair<double, double>> L, R;
 
 
 
-
-
-
-
-
-
-
+    costTracker(dangerous, route, route_car, start_point, start_direction,frame_show, object_list, L, R);
 
 
 
     /// TTC 계산
     //차의 현재위치와 물체의 현재위치
     pair<double, double> car = make_pair(10,10);  // make_pair(5, 5);
-    pair<double, double> object = make_pair(20,20);
+    pair<double, double> object_ttc = make_pair(20,20);
     pair<double, double> car_heading = make_pair(1,5);
     pair<double, double> object_heading = make_pair(10,1);
     double car_velocity = 5;
     double object_velocity = 3;
 
-    double answer = TTC_master(car, object, car_heading, object_heading, car_velocity, object_velocity);
+    double answer = TTC_master(car, object_ttc, car_heading, object_heading, car_velocity, object_velocity);
     cout << answer << endl;
 
 

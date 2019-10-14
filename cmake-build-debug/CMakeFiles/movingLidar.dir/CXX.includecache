@@ -9,6 +9,8 @@
 /Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.cpp
 movingLidar.h
 /Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h
+preProcessing.h
+/Users/parkkyuyeol/CLionProjects/movingLidar/preProcessing.h
 
 /Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h
 opencv2/opencv.hpp
@@ -23,8 +25,6 @@ cmath
 -
 vector
 -
-preProcessing.h
-/Users/parkkyuyeol/CLionProjects/movingLidar/preProcessing.h
 
 /Users/parkkyuyeol/CLionProjects/movingLidar/preProcessing.h
 opencv2/opencv.hpp
@@ -37,8 +37,6 @@ iostream
 -
 cmath
 -
-movingLidar.h
-/Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h
 
 /usr/local/Cellar/opencv@3/3.4.5_3/include/opencv2/calib3d.hpp
 opencv2/core.hpp

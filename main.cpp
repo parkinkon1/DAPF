@@ -5,22 +5,23 @@
 
 int main() {
 
-    Mat input = imread("/Users/parkkyuyeol/Downloads/road4.png", IMREAD_COLOR);
-    if (input.empty()) {
-        cerr << "Image load failed" << endl;
-        return 0;
-    }
+//    Mat input = imread("/Users/parkkyuyeol/Downloads/road4.png", IMREAD_COLOR);
+//    if (input.empty()) {
+//        cerr << "Image load failed" << endl;
+//        return 0;
+//    }
+//
+//    int width = input.cols;
+//    int height = input.rows;
+//    resize(input, input, Size(width, height));
+//
+//    imshow("origin", input);
 
-    int width = input.cols;
-    int height = input.rows;
-    resize(input, input, Size(width, height));
 
-    imshow("origin", input);
-
+    Mat input;
     getMovingFrame(input, 3);
 
 //    detection(input, input);
-    waitKey();
 
 
 //
