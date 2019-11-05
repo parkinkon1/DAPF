@@ -257,7 +257,7 @@ Point2d DAPF::diffByObject(double get_x, double get_y) {
 
             for (int k = 1; k <= peaknum; k++)
             {
-                cout << "k : " << k << endl;
+//                cout << "k : " << k << endl;
                 zs.push_back((100 + 10 * k) * exp(-(0.005 / ((1.0 + 0.1*k) * r))*(pow(get_x - pt_x[k], 2) + pow(get_y - pt_y[k], 2)))); //z값은 (q,p)값에 미치는 물체의 총 퍼텐셜의 합
 
             }
@@ -292,8 +292,8 @@ Point2d DAPF::diffByObject(double get_x, double get_y) {
     return Point2d(diff_x, diff_y);
 }
 Point2d DAPF::diffByLane(double get_x, double get_y) {
-    double alpha = 500, alpha_dotted = 0.005;
-    double distance_L = 0, distance_R = 0, distance_dotted;
+    double alpha = 250, alpha_dotted = 0.01;
+    double distance_L = 0, distance_R = 0, distance_dotted = 0;
     double diff_x = 0, diff_y = 0;
     double x_L = L[(int)get_y].first;
     double x_R = R[(int)get_y].first;
@@ -311,7 +311,7 @@ Point2d DAPF::diffByLane(double get_x, double get_y) {
     // 점선 차선 힘 계산
     distance_dotted = get_x - x_dotted;
     if (abs(distance_dotted) <= 1) diff_x += alpha_dotted * distance_dotted * 255;
-    else diff_x += alpha_dotted * distance_dotted * 255 * exp(-0.1 * abs(distance_dotted));
+    else diff_x += alpha_dotted * distance_dotted * 255 * exp(-0.05 * abs(distance_dotted));
 
     return Point2d(diff_x, -10);
 }
@@ -398,6 +398,16 @@ void DAPF::curveFitting(Mat &input, Mat &output, vector<Point2d> &route, vector<
     }
 
     vector<pair<double, double>> v;
+    for (int i = 0; i < 20; i++) {
+        v.push_back(make_pair(route[0].x, route[0].y));
+    }
+    for (int i = 0; i < 10; i++) {
+        v.push_back(make_pair(route[1].x, route[1].y));
+    }
+    for (int i = 0; i < 10; i++) {
+        v.push_back(make_pair(route[2].x, route[2].y));
+    }
+
     for (auto & i : route) {
         v.push_back(make_pair(i.x, i.y));
     }
@@ -591,6 +601,7 @@ void DAPF::drawDangerous() {
     // 물체 그리기
     vector<Object*>::iterator iter;
     for (iter = objects_list.begin(); iter != objects_list.end(); iter++) {
+        if ((*iter)->direction.x >= 1 && (*iter)->direction.y >= 1) continue;
         circle(dangerous, (*iter)->position, (int)(*iter)->r, Scalar(0), -1);
     }
 }
@@ -768,7 +779,7 @@ void DAPF::costTracker() {
                     imshow("path planning", frame_show);
                     waitKey();
 
-                    if (objects_list.size() >= 100) break;
+                    if (objects_list.size() >= 200) break;
                     objects_list.push_back(new Object(collisionPoint, Point2d(0, 0), -1));
                     setPosition(position);
                     setDirection(direction);
@@ -791,9 +802,8 @@ void DAPF::costTracker() {
             waitKey();
 
             position = route_car[1];
-            direction = route_car[1] - route_car[0];
-            direction /= sqrt(pow(direction.x , 2) + pow(direction.y, 2));
-            direction *= speed;
+            direction = route_car[2] - route_car[1];
+            direction *= speed / sqrt(pow(direction.x , 2) + pow(direction.y, 2));
             setPosition(position);
             setDirection(direction);
             return;
