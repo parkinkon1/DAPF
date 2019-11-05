@@ -18,8 +18,36 @@ int main() {
 //    imshow("origin", input);
 
 
-    Mat input;
-    getMovingFrame(input, 3);
+    int width = 600, height = 900;
+    DAPF dapf(width, height);
+
+    vector<pair<double, double>> L, R, dotted;
+    for (int i = 0; i < 900; i++) {
+        L.push_back(make_pair(100, i));
+        R.push_back(make_pair(500, i));
+        dotted.push_back(make_pair(300, i));
+    }
+
+    dapf.initLane(L, R, dotted);
+//    dapf.pushObject(Point2d(420, 350), Point2d(0, 0), 150);
+//    dapf.pushObject(Point2d(200, 100), Point2d(0, 0), 30);
+//    dapf.pushObject(Point2d(300, 500), Point2d(0, 0), 30);
+    dapf.pushObject(Point2d(100, 200), Point2d(0, 0), 30);
+    dapf.pushObject(Point2d(250, 400), Point2d(0, 0), 30);
+    dapf.drawDangerous();
+
+    dapf.setPosition(Point2d(width * 2.4 / 4, height));
+    dapf.setDirection(Point2d(0, -5));
+
+    dapf.showDAPF(0);
+    dapf.costTracker();
+
+    Point2d startPoint(width * 2.4 / 4, height);
+    Point2d startDirection(0, -5);
+    dapf.simulation(startPoint, startDirection);
+
+
+
 
 //    detection(input, input);
 
