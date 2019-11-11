@@ -12,6 +12,9 @@
 #include <cmath>
 #include <vector>
 
+#include <fstream>
+#include <string>
+
 
 using namespace std;
 using namespace cv;
@@ -66,7 +69,7 @@ private:
     double getSteerwithCurve(vector<double> &ans, int y);
 
     // 차의 위치와 헤딩을 넣으면 차량 영역이 그려진 영상을 반환
-    bool drawCar(Mat &input, Mat &output, Point2d point_car, float heading, Mat &potential, Point2d &collisionPoint);
+    bool drawCar(Mat &input, Mat &output, Point2d &point_car, float heading, Mat &potential, Point2d &collisionPoint);
     // 점의 방정식을 곡선으로 근사
     void curveFitting(Mat &input, Mat &output, vector<Point2d> &route, vector<double> &ans, int start, int end);
 

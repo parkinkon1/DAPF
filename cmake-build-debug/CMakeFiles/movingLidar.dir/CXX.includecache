@@ -6,14 +6,6 @@
 
 #IncludeRegexTransform: 
 
-/Users/parkkyuyeol/CLionProjects/movingLidar/main.cpp
-movingLidar.h
-/Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h
-iostream
--
-ctime
--
-
 /Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.cpp
 movingLidar.h
 /Users/parkkyuyeol/CLionProjects/movingLidar/movingLidar.h
@@ -32,6 +24,10 @@ iostream
 cmath
 -
 vector
+-
+fstream
+-
+string
 -
 
 /Users/parkkyuyeol/CLionProjects/movingLidar/preProcessing.h

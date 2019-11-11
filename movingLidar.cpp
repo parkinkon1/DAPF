@@ -103,7 +103,7 @@ double DAPF::potentialByObject(double get_x, double get_y) {
 
             for (int k = 1; k <= peaknum; k++)
             {
-                cout << "k : " << k << endl;
+//                cout << "k : " << k << endl;
                 zs.push_back((100 + 10 * k) * exp(-(0.005 / ((1.0 + 0.1*k) * r))*(pow(get_x - pt_x[k], 2) + pow(get_y - pt_y[k], 2)))); //z값은 (q,p)값에 미치는 물체의 총 퍼텐셜의 합
 
             }
@@ -158,7 +158,7 @@ double DAPF::potentialByLane(double get_x, double get_y) {
     return z;
 }
 Point2d DAPF::diffByObject(double get_x, double get_y) {
-    double alpha = 500;
+    double alpha = 700;
     double distance = 0;
     double dx = 0, dy = 0;
     double diff_x = 0, diff_y = 0;
@@ -178,8 +178,8 @@ Point2d DAPF::diffByObject(double get_x, double get_y) {
         if (r == -1) {
             distance = sqrt(pow(dx, 2) + pow(dy, 2));
             if (distance <= 1) continue;
-            diff_x += dx * 20 / pow(0.2 * pow(distance, 2), 3/2);
-            diff_y += dy * 20 / pow(0.2 * pow(distance, 2), 3/2);
+            diff_x += dx * 20 / pow(0.5 * pow(distance, 2), 3/2);
+            diff_y += dy * 20 / pow(0.5 * pow(distance, 2), 3/2);
         }
         // 정적 물체인 경우
         else if (abs(object->direction.x) <= 1 && abs(object->direction.y) <= 1) {
@@ -196,103 +196,130 @@ Point2d DAPF::diffByObject(double get_x, double get_y) {
                 diff_y += (dy - r * (dy / distance)) * alpha;
             }
             else {
-                diff_x += (dx - r * (dx / distance)) * alpha / pow(pow(distance - r, 2), 3/2);
-                diff_y += (dy - r * (dy / distance)) * alpha / pow(pow(distance - r, 2), 3/2);
+                diff_x += (dx - r * (dx / distance)) * alpha / pow(0.5 * pow(distance - r, 2), 3/2);
+                diff_y += (dy - r * (dy / distance)) * alpha / pow(0.5 * pow(distance - r, 2), 3/2);
             }
         }
-            // 동적 물체인 경우
+        // 동적 물체인 경우
         else {
+            // 거리 계산
+            distance = sqrt(pow(dx, 2) + pow(dy, 2));
+            double collision_time = distance / 10;
 
-            double z1, z2, z3, z4, z5; // x편미분, y편미분값의 합
-            double diff_x_1, diff_x_2, diff_x_3, diff_x_4, diff_x_5; // x편미분
-            double diff_y_1, diff_y_2, diff_y_3, diff_y_4, diff_y_5;
-            double pt1_x, pt1_y, pt2_x, pt2_y, pt3_x, pt3_y, pt4_x, pt4_y;
+            x += object->direction.x * collision_time;
+            y += object->direction.y * collision_time;
+            dx = get_x - x;
+            dy = get_y - y;
+            distance = sqrt(pow(dx, 2) + pow(dy, 2));
 
-            double x_v = object->direction.x;
-            double y_v = object->direction.y;
-
-            vector<double> zs; // x편미분값, y편미분값의 합
-            vector<double> diffs_x; // x편미분값
-            vector<double> diffs_y; // y편미분값
-            vector<double> pt_x; // 방향벡터에 의한 예측 경로상의 퍼텐셜 x좌표
-            vector<double> pt_y; // 방향벡터에 의한 예측 경로상의 퍼텐셜 y좌표
-
-            double z_sum = 0;
-            double diff_x_sum = 0;
-            double diff_y_sum = 0;
-
-            distance = sqrt(pow(get_x - x, 2) + pow(get_y - y, 2)); // 차량과 물체와의 거리
-
-            if (distance >= 0 && distance < 200) { // 차량과 물체와의 거리에 따른 방향벡터의 가중치를 부여합니다.
-                x_v = x_v;
-                y_v = y_v;
+            // 오브젝트 힘 계산
+            if (distance <= r) {
+                diff_x = 0;
+                diff_y = 0;
+                break;
             }
-            if (distance >= 200 && distance < 400) {
-                x_v = 1.1*x_v;
-                y_v = 1.1*y_v;
+            else if (distance - r <= 1) {
+                diff_x += (dx - r * (dx / distance)) * alpha;
+                diff_y += (dy - r * (dy / distance)) * alpha;
             }
-            if (distance >= 400 && distance < 600) {
-                x_v = 1.2*x_v;
-                y_v = 1.2*y_v;
-            }
-            if (distance >= 600 && distance < 800) {
-                x_v = 1.3*x_v;
-                y_v = 1.3*y_v;
-            }
-            if (distance >= 800) {
-                x_v = 1.4*x_v;
-                y_v = 1.4*y_v;
+            else {
+                diff_x += (dx - r * (dx / distance)) * alpha / pow(0.8 * pow(distance - r, 2), 3/2);
+                diff_y += (dy - r * (dy / distance)) * alpha / pow(0.8 * pow(distance - r, 2), 3/2);
             }
 
-            int peaknum = (int)((sqrt(pow(x_v, 2) + pow(y_v, 2))) / (r)); // 예측 경로상에 추가할 퍼텐셜 함수의 개수. 방향벡터와 물체의 위치벡터 사이를 물체의 반지름으로 나눕니다.
 
-            for (int j = 0; j <= peaknum; j++)
-            {
-                pt_x.push_back(x + (x_v * j / peaknum)); // pt_x 벡터에 만들어질 수 있는 퍼텐셜 함수의 x값을 저장합니다.
-                pt_y.push_back(y + (y_v * j / peaknum)); // pt_y 벡터에 만들어질 수 있는 퍼텐셜 함수의 y값을 저장합니다.
 
-            }
 
-            zs.insert(zs.begin(), (100) * exp(-(0.005 / ((1.0) * r))*(pow(get_x - x, 2) + pow(get_y - y, 2))));
-
-            for (int k = 1; k <= peaknum; k++)
-            {
-//                cout << "k : " << k << endl;
-                zs.push_back((100 + 10 * k) * exp(-(0.005 / ((1.0 + 0.1*k) * r))*(pow(get_x - pt_x[k], 2) + pow(get_y - pt_y[k], 2)))); //z값은 (q,p)값에 미치는 물체의 총 퍼텐셜의 합
-
-            }
-
-            diffs_x.insert(diffs_x.begin(), (get_x - x) * (-1 * exp(-(0.005 / r) * (pow(get_x - x, 2) + pow(get_y - y, 2))))); // diff_x는 퍼텐셜 함수의 x편미분 값
-            diffs_y.insert(diffs_y.begin(), (get_y - y) * (-1 * exp(-(0.005 / r) * (pow(get_y - y, 2) + pow(get_x - x, 2))))); // diff_y는 퍼텐셜 함수의 y편미분 값
-
-            for (int i = 1; i <= peaknum; i++)
-            {
-                diffs_x.push_back((1.0 + 0.1*i)*(get_x - pt_x[i]) * (-1 * exp(-(0.005 / ((1.0 + 0.1*i) * r)) * (pow(get_x - pt_x[i], 2) + pow(get_y - pt_y[i], 2)))));
-                diffs_y.push_back((1.0 + 0.1*i)*(get_y - pt_y[i]) * (-1 * exp(-(0.005 / ((1.0 + 0.1*i) * r)) * (pow(get_y - pt_y[i], 2) + pow(get_x - pt_x[i], 2)))));
-
-            }
-
-            for (int i = 0; i <= peaknum; i++)
-            {
-                z_sum += zs[i];
-                diff_x_sum += diffs_x[i];
-                diff_y_sum += diffs_y[i];
-            }
-
-            zs.clear();
-            diffs_x.clear();
-            diffs_y.clear();
-            pt_x.clear();
-            pt_y.clear();
-
-            diff_x += diff_x_sum;
-            diff_y += diff_y_sum;
+//            double z1, z2, z3, z4, z5; // x편미분, y편미분값의 합
+//            double diff_x_1, diff_x_2, diff_x_3, diff_x_4, diff_x_5; // x편미분
+//            double diff_y_1, diff_y_2, diff_y_3, diff_y_4, diff_y_5;
+//            double pt1_x, pt1_y, pt2_x, pt2_y, pt3_x, pt3_y, pt4_x, pt4_y;
+//
+//            double x_v = object->direction.x;
+//            double y_v = object->direction.y;
+//
+//            vector<double> zs; // x편미분값, y편미분값의 합
+//            vector<double> diffs_x; // x편미분값
+//            vector<double> diffs_y; // y편미분값
+//            vector<double> pt_x; // 방향벡터에 의한 예측 경로상의 퍼텐셜 x좌표
+//            vector<double> pt_y; // 방향벡터에 의한 예측 경로상의 퍼텐셜 y좌표
+//
+//            double z_sum = 0;
+//            double diff_x_sum = 0;
+//            double diff_y_sum = 0;
+//
+//            distance = sqrt(pow(get_x - x, 2) + pow(get_y - y, 2)); // 차량과 물체와의 거리
+//
+//            if (distance >= 0 && distance < 200) { // 차량과 물체와의 거리에 따른 방향벡터의 가중치를 부여합니다.
+//                x_v = x_v;
+//                y_v = y_v;
+//            }
+//            if (distance >= 200 && distance < 400) {
+//                x_v = 1.1*x_v;
+//                y_v = 1.1*y_v;
+//            }
+//            if (distance >= 400 && distance < 600) {
+//                x_v = 1.2*x_v;
+//                y_v = 1.2*y_v;
+//            }
+//            if (distance >= 600 && distance < 800) {
+//                x_v = 1.3*x_v;
+//                y_v = 1.3*y_v;
+//            }
+//            if (distance >= 800) {
+//                x_v = 1.4*x_v;
+//                y_v = 1.4*y_v;
+//            }
+//
+//            int peaknum = (int)((sqrt(pow(x_v, 2) + pow(y_v, 2))) / (r)); // 예측 경로상에 추가할 퍼텐셜 함수의 개수. 방향벡터와 물체의 위치벡터 사이를 물체의 반지름으로 나눕니다.
+//
+//            for (int j = 0; j <= peaknum; j++)
+//            {
+//                pt_x.push_back(x + (x_v * j / peaknum)); // pt_x 벡터에 만들어질 수 있는 퍼텐셜 함수의 x값을 저장합니다.
+//                pt_y.push_back(y + (y_v * j / peaknum)); // pt_y 벡터에 만들어질 수 있는 퍼텐셜 함수의 y값을 저장합니다.
+//
+//            }
+//
+//            zs.insert(zs.begin(), (100) * exp(-(0.005 / ((1.0) * r))*(pow(get_x - x, 2) + pow(get_y - y, 2))));
+//
+//            for (int k = 1; k <= peaknum; k++)
+//            {
+////                cout << "k : " << k << endl;
+//                zs.push_back((100 + 10 * k) * exp(-(0.005 / ((1.0 + 0.1*k) * r))*(pow(get_x - pt_x[k], 2) + pow(get_y - pt_y[k], 2)))); //z값은 (q,p)값에 미치는 물체의 총 퍼텐셜의 합
+//
+//            }
+//
+//            diffs_x.insert(diffs_x.begin(), (get_x - x) * (-1 * exp(-(0.005 / r) * (pow(get_x - x, 2) + pow(get_y - y, 2))))); // diff_x는 퍼텐셜 함수의 x편미분 값
+//            diffs_y.insert(diffs_y.begin(), (get_y - y) * (-1 * exp(-(0.005 / r) * (pow(get_y - y, 2) + pow(get_x - x, 2))))); // diff_y는 퍼텐셜 함수의 y편미분 값
+//
+//            for (int i = 1; i <= peaknum; i++)
+//            {
+//                diffs_x.push_back((1.0 + 0.1*i)*(get_x - pt_x[i]) * (-1 * exp(-(0.005 / ((1.0 + 0.1*i) * r)) * (pow(get_x - pt_x[i], 2) + pow(get_y - pt_y[i], 2)))));
+//                diffs_y.push_back((1.0 + 0.1*i)*(get_y - pt_y[i]) * (-1 * exp(-(0.005 / ((1.0 + 0.1*i) * r)) * (pow(get_y - pt_y[i], 2) + pow(get_x - pt_x[i], 2)))));
+//
+//            }
+//
+//            for (int i = 0; i <= peaknum; i++)
+//            {
+//                z_sum += zs[i];
+//                diff_x_sum += diffs_x[i];
+//                diff_y_sum += diffs_y[i];
+//            }
+//
+//            zs.clear();
+//            diffs_x.clear();
+//            diffs_y.clear();
+//            pt_x.clear();
+//            pt_y.clear();
+//
+//            diff_x += -diff_x_sum;
+//            diff_y += -diff_y_sum;
         }
     }
     return Point2d(diff_x, diff_y);
 }
 Point2d DAPF::diffByLane(double get_x, double get_y) {
-    double alpha = 250, alpha_dotted = 0.01;
+    double alpha = 120, alpha_dotted = 1;
     double distance_L = 0, distance_R = 0, distance_dotted = 0;
     double diff_x = 0, diff_y = 0;
     double x_L = L[(int)get_y].first;
@@ -311,7 +338,7 @@ Point2d DAPF::diffByLane(double get_x, double get_y) {
     // 점선 차선 힘 계산
     distance_dotted = get_x - x_dotted;
     if (abs(distance_dotted) <= 1) diff_x += alpha_dotted * distance_dotted * 255;
-    else diff_x += alpha_dotted * distance_dotted * 255 * exp(-0.05 * abs(distance_dotted));
+    else diff_x += alpha_dotted * distance_dotted * 2 * exp(-0.001 * pow(distance_dotted, 2));
 
     return Point2d(diff_x, -10);
 }
@@ -341,7 +368,7 @@ double DAPF::getSteerwithCurve(vector<double> &ans, int y) {
 }
 
 // 차의 위치와 헤딩을 넣으면 차량 영역이 그려진 영상을 반환
-bool DAPF::drawCar(Mat &input, Mat &output, Point2d point_car, float heading, Mat &potential, Point2d &collisionPoint) {
+bool DAPF::drawCar(Mat &input, Mat &output, Point2d &point_car, float heading, Mat &potential, Point2d &collisionPoint) {
     output = input.clone();
     float descent_rad = heading + CV_PI/2;
     float heading_deg = heading * 180 / CV_PI;
@@ -361,7 +388,7 @@ bool DAPF::drawCar(Mat &input, Mat &output, Point2d point_car, float heading, Ma
     ////////////////////////////////////////////////////////////
 
     float rot_x, rot_y;
-    float rot_cos = cos(heading), rot_sin = sin(heading);
+    float rot_cos = cos(-heading), rot_sin = sin(-heading);
     uchar *potentialData = potential.data;
     uchar *outputData = output.data;
     uchar cost;
@@ -398,14 +425,26 @@ void DAPF::curveFitting(Mat &input, Mat &output, vector<Point2d> &route, vector<
     }
 
     vector<pair<double, double>> v;
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 500; i++) {
         v.push_back(make_pair(route[0].x, route[0].y));
     }
-    for (int i = 0; i < 10; i++) {
-        v.push_back(make_pair(route[1].x, route[1].y));
-    }
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 500; i++) {
         v.push_back(make_pair(route[2].x, route[2].y));
+    }
+//    for (int i = 0; i < 5; i++) {
+//        v.push_back(make_pair(route[1].x, route[1].y));
+//    }
+//    for (int i = 0; i < 5; i++) {
+//        v.push_back(make_pair(route[2].x, route[2].y));
+//    }
+//    for (int i = 0; i < 5; i++) {
+//        v.push_back(make_pair(route[3].x, route[3].y));
+//    }
+//    for (int i = 0; i < 5; i++) {
+//        v.push_back(make_pair(route[4].x, route[4].y));
+//    }
+    for (int i = 0; i < 20; i++) {
+        v.push_back(make_pair(route.back().x, route.back().y));
     }
 
     for (auto & i : route) {
@@ -566,8 +605,8 @@ DAPF::DAPF(int width, int height) {
     this->road = Mat(height, width, CV_8UC3, Scalar(255, 255, 255));
     this->dangerous = Mat(height, width, CV_8UC1, Scalar(255));
 
-    this->car_width = 40;
-    this->car_height = 60;
+    this->car_width = 80;
+    this->car_height = 120;
 }
 
 DAPF::~DAPF() {
@@ -601,8 +640,9 @@ void DAPF::drawDangerous() {
     // 물체 그리기
     vector<Object*>::iterator iter;
     for (iter = objects_list.begin(); iter != objects_list.end(); iter++) {
-        if ((*iter)->direction.x >= 1 && (*iter)->direction.y >= 1) continue;
-        circle(dangerous, (*iter)->position, (int)(*iter)->r, Scalar(0), -1);
+        if (abs((*iter)->direction.x) >= 1 || abs((*iter)->direction.y) >= 1)
+            circle(dangerous, (*iter)->position, (int)(*iter)->r, Scalar(100), -1);
+        else circle(dangerous, (*iter)->position, (int)(*iter)->r, Scalar(0), -1);
     }
 }
 
@@ -672,7 +712,7 @@ void DAPF::costTracker() {
 
     /// *** non-holonomic search ***
     double diff_size = sqrt(pow(diff_sum.x, 2) + pow(diff_sum.y, 2));
-    double diff_ratio = diff_size / (speed / 10);
+    double diff_ratio = diff_size / (speed / 8);
     if (diff_ratio >= 1) {
         diff_sum.x /= diff_ratio;
         diff_sum.y /= diff_ratio;
@@ -767,7 +807,7 @@ void DAPF::costTracker() {
                 route_car.push_back(Point2d(next_pos[0],next_pos[1]));
                 next_pos.clear();
                 // 차량이 지나가는 경로 그리기
-                if (count % 1 == 0) {
+                if (count % 5 == 0) {
                     heading = (-CV_PI / 2) + steer;
                     isColl = drawCar(frame_show, frame_show, route_car.back(), (float)heading, dangerous, collisionPoint);
                 } count++;
@@ -776,11 +816,20 @@ void DAPF::costTracker() {
                 if (isColl) {
                     cout << "collide !!" << endl;
                     circle(frame_show, collisionPoint, 10, Scalar(200, 150, 100), 5);
+
+                    // 차량이 지나간 경로 그리기
+                    for (int i = 0; i < (int)route_car.size() - 1; i++) {
+                        line(frame_show, route_car[i], route_car[i+1], Scalar(255, 0, 255), 2);
+                    }
+                    for (int i = 0; i < (int)route_car.size(); i++) {
+                        circle(frame_show, route_car[i], 3, Scalar(200, 150, 200), -1);
+                    }
+
                     imshow("path planning", frame_show);
                     waitKey();
 
                     if (objects_list.size() >= 200) break;
-                    objects_list.push_back(new Object(collisionPoint, Point2d(0, 0), -1));
+                    objects_list.push_back(new Object(collisionPoint, Point2d(0,0), -1)),
                     setPosition(position);
                     setDirection(direction);
                     costTracker();
@@ -829,9 +878,46 @@ void DAPF::costTracker() {
 
 void DAPF::simulation(Point2d startPoint, Point2d startDirection) {
     Mat frame_show;
-    cvtColor(dangerous, frame_show, COLOR_GRAY2BGR);
+    Mat frame(height, width, CV_8UC3, Scalar(255, 255, 255));
     vector<Point2d> simulate;
 
+    // 차선 그리기
+    for (int i = 0; i < (int)L.size(); i += 10) {
+        circle(frame, Point2d(L[i].first, L[i].second), 5, Scalar(0, 0, 0), -1);
+    }
+    for (int i = 0; i < (int)R.size(); i += 10) {
+        circle(frame, Point2d(R[i].first, R[i].second), 5, Scalar(0, 0, 0), -1);
+    }
+    for (int i = 0; i < (int)dotted.size(); i += 30) {
+        circle(frame, Point2d(dotted[i].first, dotted[i].second), 5, Scalar(50, 50, 50), -1);
+    }
+
+    // 물체 그리기
+    vector<Object*>::iterator iter;
+    for (iter = objects_list.begin(); iter != objects_list.end(); iter++) {
+        if (abs((*iter)->direction.x) >= 1 || abs((*iter)->direction.y) >= 1 || (*iter)->r == -1)
+            continue;
+        else circle(frame, (*iter)->position, (int)(*iter)->r, Scalar(255, 10, 10), -1);
+    }
+
+    frame_show = frame.clone();
+    for(iter = objects_list.begin(); iter != objects_list.end(); iter++) {
+        if (abs((*iter)->direction.x) >= 1 || abs((*iter)->direction.y) >= 1) {
+            circle(frame_show, (*iter)->position, (int)(*iter)->r, Scalar(100, 100, 100), -1);
+            cout << "dynamic ob drawing1" << endl;
+        }
+    }
+
+
+
+    // 파일 쓰기 준비
+    std::ofstream out("pedestrian_dynamic.txt");
+    std::string s;
+    if (out.is_open()) {
+        out << "position.x position.y direction.x direction.y ob_x ob_y ob_dx ob_dy\n";
+    }
+
+    double ob_x = 0, ob_y = 0, ob_dx = 0, ob_dy = 0;
     setPosition(startPoint);
     setDirection(startDirection);
     cout << "simulation start" << endl;
@@ -847,12 +933,46 @@ void DAPF::simulation(Point2d startPoint, Point2d startDirection) {
         rotatedRectangle.points(pts1);
 
         for (int i = 0; i < 4; i++) {
-            line(frame_show, pts1[i], pts1[(i + 1) % 4], Scalar(255, 0, 0), 2);
+            line(frame, pts1[i], pts1[(i + 1) % 4], Scalar(255, 0, 0), 2);
         }
 
         costTracker();
+
+        // 주행 보정을 위해 추가했던 점들 삭제
+        for(iter = objects_list.begin();  iter != objects_list.end(); ) {
+            if ((*iter)->r == -1) {
+                delete *iter;
+                iter = objects_list.erase(iter);
+            }
+            else iter++;
+        }
+
+        // 동적 물체 이동
+        frame_show = frame.clone();
+        for(iter = objects_list.begin(); iter != objects_list.end(); iter++) {
+            if (abs((*iter)->direction.x) >= 1 || abs((*iter)->direction.y) >= 1) {
+                (*iter)->position = (*iter)->position + (*iter)->direction;
+                circle(frame_show, (*iter)->position, (int)(*iter)->r, Scalar(100, 100, 100), -1);
+                cout << "dynamic ob drawing" << endl;
+                ob_x = (*iter)->position.x;
+                ob_y = (*iter)->position.y;
+                ob_dx = (*iter)->direction.x;
+                ob_dy = (*iter)->direction.y;
+            }
+        }
+
+
+        if (out.is_open()) {
+            out << to_string(position.x) << " " << to_string(position.y) << " " << to_string(direction.x) << to_string(direction.y) << " "
+            << to_string(ob_x) << " " << to_string(ob_y) << " " << to_string(ob_dx) << " " << to_string(ob_dy) << "\n";
+        }
+
+
         imshow("simulation!!!!", frame_show);
         waitKey();
+
+
+
     }
 
     for (int i = 0; i < (int)simulate.size() - 1; i++) {

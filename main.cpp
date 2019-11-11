@@ -29,11 +29,11 @@ int main() {
     }
 
     dapf.initLane(L, R, dotted);
-    dapf.pushObject(Point2d(420, 300), Point2d(-50, 0), 50);
-//    dapf.pushObject(Point2d(200, 100), Point2d(0, 0), 30);
+//    dapf.pushObject(Point2d(420, 700), Point2d(0, 0), 50);
+//    dapf.pushObject(Point2d(450, 100), Point2d(-5, 0), 40);
 //    dapf.pushObject(Point2d(300, 500), Point2d(0, 0), 30);
-//    dapf.pushObject(Point2d(100, 200), Point2d(0, 0), 130);
-//    dapf.pushObject(Point2d(250, 400), Point2d(0, 0), 30);
+    dapf.pushObject(Point2d(440, 200), Point2d(-5, 0), 30);
+//    dapf.pushObject(Point2d(250, 400), Point2d(200, 0), 30);
     dapf.drawDangerous();
 
     dapf.setPosition(Point2d(width * 2.4 / 4, height));
